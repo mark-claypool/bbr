@@ -1,0 +1,10 @@
+# BBR' Changelog
+
+v1.3 - Re-worked RTT and BW windows to use actual times.
+       Added configuration option for pacing/non-pacing/tcp-pacing.
+     
+v1.2 - Re-factored state code to use FSM for BBR states.
+
+v1.1 - Added PROBE_RTT state.
+
+v1.0 - Initial version.
