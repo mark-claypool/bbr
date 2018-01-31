@@ -19,10 +19,11 @@ patch/ - directory with patchfile for ns-3 allinone tree.
 These instructions are to install BBR' to the ns-allinone package
 (version 3.27).  Mileage may vary for alternate uses.
 
-NS3 = ns-3 all-in-one directory
+**ROOT** = ns-3 all-in-one directory
+
     e.g., /home/claypool/ns-allinone-3.27
 
-REPO = this git repository
+**REPO** = this git repository
 
 ### Applying Repository Patch
 
@@ -34,6 +35,11 @@ REPO = this git repository
 2) Apply patch:
 
     patch -p0 < REPO/*.patch
+
+2) Go to ROOT and build:
+
+    cd ROOT/
+    ./build.py --enable-examples --enable-tests
 
 3) Run and analyze.  Example:
 
@@ -47,21 +53,21 @@ REPO = this git repository
     bzip2 -d *.zip
     tar xvf *tar
 	
-2) Go to NS3 and build:
+2) Go to ROOT and build:
 
-    cd NS3/
+    cd ROOT/
     ./build.py --enable-examples --enable-tests
 
-3) Go to NS3 source and link in BBR' and supporting files:
+3) Go to ROOT source and link in BBR' and supporting files:
 
-    cd NS3/ns-3.27/src/internet/model
+    cd ROOT/ns-3.27/src/internet/model
 	ln -s REPO/src/bbr/*.cc .
 	ln -s REPO/src/bbr/*.h .
 	ln -sf REPO/src/model/*.cc .
 	ln -sf REPO/src/model/*.h .
 	ln -sf REPO/src/model/*.h .
 
-    cd NS3/ns-3.27/src/applications/model
+    cd ROOT/ns-3.27/src/applications/model
 	ln -sf REPO/src/applications/*.cc .
 	
 4) Edit script file to build BBR':
@@ -111,7 +117,7 @@ needed gain adjustments) as the sole way of controlling the rate.
 
 Configurations are controlled via PACING_CONFIG in:
 
-    NS3/ns-3.27/src/internet/model/tcp-socket-base.h
+    ROOT/ns-3.27/src/internet/model/tcp-socket-base.h
 
 e.g., 
 
