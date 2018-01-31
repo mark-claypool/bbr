@@ -145,12 +145,11 @@ can also be changed via script parameters.
 V. Jacobson.  "BBR: Congestion-Based Congestion Control",
 *Communications of the ACM*, 60(2), February 2017.
 
-[CCL18] M. Claypool, J. Chung, and F. Li. "BBR' - An Implementation of
-Bottleneck Bandwidth and Round-trip Time Congestion Control for ns-3",
-Technical Report WPI-CS-TR-18-01, Computer Science, Worcester
+[CCL18] M. Claypool, J.W. Chung, and F. Li. "BBR' - An Implementation
+of Bottleneck Bandwidth and Round-trip Time Congestion Control for
+ns-3", Technical Report WPI-CS-TR-18-01, Computer Science, Worcester
 Polytechnic Institute, January 2018.
 
 [CCYJ17] N. Cardwell, Y. Cheng, S. H. Yeganeh, and V. Jacobson.  "BBR
 Congestion Control", *IETF Draft
 draft-cardwell-iccrg-bbr-congestion-control-00*, July 2017.
-
