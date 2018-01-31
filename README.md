@@ -8,7 +8,9 @@ BBR' source code and test scripts for ns-3 (version 3.27).
 ## DIRECTORIES
 
 tests/ - test scripts for BBR'.
+
 src/ - BBR' source code and ns-3 source files that need changes.
+
 patch/ - directory with patchfile for ns-3 allinone tree.
 
 
@@ -19,6 +21,7 @@ These instructions are to install BBR' to the ns-allinone package
 
 NS3 = ns-3 all-in-one directory
     e.g., /home/claypool/ns-allinone-3.27
+
 REPO = this git repository
 
 ### Applying Repository Patch
