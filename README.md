@@ -131,13 +131,18 @@ congestion window (i.e., the bottleneck bandwidth) be the limit, the
 send/receive buffers can be increased from their defaults (128k in
 ns-3).
 
-The file that holds these values.
+Changing the attributes "SndBufSize" and "RcvBufSize". These values
+can also be changed via script parameters.  e.g., for double the
+default size (131072 bytes):
+
+    Config::SetDefault("ns3::TcpSocket::RcvBufSize", 
+	                   UintegerValue(131072*2));
+    Config::SetDefault("ns3::TcpSocket::SndBufSize", 
+	                   UintegerValue(131072*2));
+
+For reference, the file that holds these values.
 
     ROOT/ns-3.27/src/internet/model/tcp-socket.cc
-	
-Changing the attributes "SndBufSize" and "RcvBufSize". These values
-can also be changed via script parameters.
-
 
 ## REFERENCES
 
