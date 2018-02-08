@@ -1,5 +1,8 @@
 # BBR' Changelog
 
+v1.4 - Updated BBR' PktsAcked() to ignore acks when sending time 
+       unknown.
+
 v1.3 - Re-worked RTT and BW windows to use actual times.
        Added configuration option for pacing/non-pacing/tcp-pacing.
      

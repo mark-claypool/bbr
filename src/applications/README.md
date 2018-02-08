@@ -7,3 +7,5 @@ ROOT = ns-3 all-in-one directory
 These files replace those in:
 
   ROOT/ns-3.27/src/application/model/
+
+See: (../README.md)[../README.md] for use.

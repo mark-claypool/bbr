@@ -28,7 +28,7 @@ namespace ns3 {
 namespace bbr {
 
 // Constants.
-const float VERSION = 1.3;            // See changelog.txt.
+const float VERSION = 1.4;            // See changelog.txt.
 const Time INIT_RTT = Time(1000000);  // Nanoseconds (.001 sec).
 const double INIT_BW = 6.0;           // Mb/s. 
 const int RTT_WINDOW_TIME = 10;       // In seconds.

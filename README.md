@@ -2,6 +2,8 @@
 
 BBR' source code and test scripts for ns-3 (version 3.27).
 
+See [CCL18] in the References for details.
+
 -- Mark Claypool [claypool@cs.wpi.edu](claypool@cs.wpi.edu)
 
 

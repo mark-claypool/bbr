@@ -400,8 +400,8 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/applications/model/bulk-send-application
  } // namespace ns3
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc	1969-12-31 19:00:00.000000000 -0500
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc	2018-01-30 18:13:56.141231151 -0500
-@@ -0,0 +1,470 @@
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc	2018-02-07 19:51:14.040313723 -0500
+@@ -0,0 +1,478 @@
 +/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 +/*
 + * Copyright (c) 2017 WPI, Verizon
@@ -583,6 +583,14 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +
 +  SequenceNumber32 ack = tcb->m_lastAckedSeq;  // W_s
 +  now = Simulator::Now();                      // W_t'
++
++  // If ack earlier than first, unknown when sent so ignore.
++  auto first = m_est_window.begin()->sent;
++  if (ack < first) {
++    NS_LOG_INFO(this << " Extra SendPendingData() sent: "<< ack);
++    NS_LOG_INFO(this << " Earliest in list: "<< first);
++    return;  // Nothing more to do.
++  }
 +
 +  // Find newest ack in window, <= current. Note, window is sorted.
 +  bbr::bw_est_struct temp;

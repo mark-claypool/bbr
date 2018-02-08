@@ -180,6 +180,14 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   SequenceNumber32 ack = tcb->m_lastAckedSeq;  // W_s
   now = Simulator::Now();                      // W_t'
 
+  // If ack earlier than first, unknown when sent so ignore.
+  auto first = m_est_window.begin()->sent;
+  if (ack < first) {
+    NS_LOG_INFO(this << " Extra SendPendingData() sent: "<< ack);
+    NS_LOG_INFO(this << " Earliest in list: "<< first);
+    return;  // Nothing more to do.
+  }
+
   // Find newest ack in window, <= current. Note, window is sorted.
   bbr::bw_est_struct temp;
   for (auto it = m_est_window.begin(); it != m_est_window.end(); it++)
