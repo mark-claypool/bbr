@@ -2,7 +2,7 @@
 
 BBR' source code and test scripts for ns-3 (version 3.27).
 
-See [CCL18] in the References for details.
+See the [Technical Report (CCL18)](#ccl18) for details.
 
 -- Mark Claypool [claypool@cs.wpi.edu](claypool@cs.wpi.edu)
 
@@ -29,14 +29,17 @@ These instructions are to install BBR' to the ns-allinone package
 
 ### Applying Repository Patch
 
-1) Extract ns allinone:
+0) Download the latest "all in one" zip file from:
 
-    bzip2 -d *.zip
-    tar xvf *tar
+    https://www.nsnam.org/releases/
+
+1) Extract:
+
+    tar xvjf *.tar.bz2
 
 2) Apply patch:
 
-    patch -p0 < REPO/*.patch
+    patch -p0 < REPO/patch/*.patch
 
 2) Go to ROOT and build:
 
@@ -50,25 +53,29 @@ These instructions are to install BBR' to the ns-allinone package
 
 ### Linking to Repository
 
-1) Extract ns allinone:
+0) Download the latest "all in one" zip file from:
 
-    bzip2 -d *.zip
-    tar xvf *tar
-	
+    https://www.nsnam.org/releases/
+
+1) Extract:
+
+    tar xvjf *.tar.bz2
+
 2) Go to ROOT and build:
 
     cd ROOT/
     ./build.py --enable-examples --enable-tests
 
-3) Go to ROOT source and link in BBR' and supporting files:
+3) Go to ROOT source(s) and link in BBR' and supporting files:
 
     cd ROOT/ns-3.27/src/internet/model
 	ln -s REPO/src/bbr/*.cc .
 	ln -s REPO/src/bbr/*.h .
-	ln -sf REPO/src/model/*.cc .
-	ln -sf REPO/src/model/*.h .
-	ln -sf REPO/src/model/*.h .
+	ln -sf REPO/src/internet/*.cc .
+	ln -sf REPO/src/internet/*.h .
+	ln -sf REPO/src/internet/*.h .
 
+    (If using APP_PACING config, do below)
     cd ROOT/ns-3.27/src/applications/model
 	ln -sf REPO/src/applications/*.cc .
 	
@@ -127,24 +134,25 @@ e.g.,
 
 ### Buffer Limits
 
-Note, the TCP receive and send buffers can often limit the throughput
-for ns-3 simulations (and real TCP connections).  In order to have the
-congestion window (i.e., the bottleneck bandwidth) be the limit, the
-send/receive buffers can be increased from their defaults (128k in
-ns-3).
+Note, the fixed limits TCP receive and send buffers can restrict
+throughput for some ns-3 simulations (and real TCP connections).  In
+order to have the congestion window (i.e., the bottleneck bandwidth)
+be the limit instead, the send/receive buffers can be increased from
+their defaults (128k in ns-3).
 
-Changing the attributes "SndBufSize" and "RcvBufSize". These values
-can also be changed via script parameters.  e.g., for double the
-default size (131072 bytes):
+To do so, change the ns-3 attributes "SndBufSize" and "RcvBufSize" via
+script parameters.  For example, to double the default size (131072
+bytes):
 
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", 
 	                   UintegerValue(131072*2));
     Config::SetDefault("ns3::TcpSocket::SndBufSize", 
 	                   UintegerValue(131072*2));
 
-For reference, the file that holds these values.
+For reference, the source file that sets these values is:
 
     ROOT/ns-3.27/src/internet/model/tcp-socket.cc
+
 
 ## REFERENCES
 
@@ -152,10 +160,11 @@ For reference, the file that holds these values.
 V. Jacobson.  "BBR: Congestion-Based Congestion Control",
 *Communications of the ACM*, 60(2), February 2017.
 
-[CCL18] M. Claypool, J.W. Chung, and F. Li. "BBR' - An Implementation
-of Bottleneck Bandwidth and Round-trip Time Congestion Control for
-ns-3", Technical Report WPI-CS-TR-18-01, Computer Science, Worcester
-Polytechnic Institute, January 2018.
+[<a name="ccl18">CCL18</a>] M. Claypool, J.W. Chung, and
+F. Li. "BBR' - An Implementation of Bottleneck Bandwidth and
+Round-trip Time Congestion Control for ns-3", Technical Report
+WPI-CS-TR-18-01, Computer Science, Worcester Polytechnic Institute,
+January 2018.
 
 [CCYJ17] N. Cardwell, Y. Cheng, S. H. Yeganeh, and V. Jacobson.  "BBR
 Congestion Control", *IETF Draft
