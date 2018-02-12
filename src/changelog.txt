@@ -1,5 +1,9 @@
 # BBR' Changelog
 
+v1.5 - Changed BW window culling to use packet-timed round trip time
+       instead of wall-clock round trip time.  Wall-clock remains a
+       config option.
+
 v1.4 - Updated BBR' PktsAcked() to ignore acks when sending time 
        unknown.
 

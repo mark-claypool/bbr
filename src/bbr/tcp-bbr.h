@@ -27,8 +27,21 @@ namespace ns3 {
 
 namespace bbr {
 
+///////////////////////////////////////////////////////////////////
+
+// Time configuration options (see Section 4.1.1.3 in [CCYJ17]):
+// PACKET_TIME - Use packet-time RTT for culling BW window.
+// WALLCLOCK_TIME - Use wall-clock RTT for culling BW window.
+enum enum_time_config {WALLCLOCK_TIME, PACKET_TIME};
+
+// Actual configuration option.
+const enum_time_config TIME_CONFIG = PACKET_TIME;
+//const enum_time_config TIME_CONFIG = WALLCLOCK_TIME;
+
+///////////////////////////////////////////////////////////////////
+
 // Constants.
-const float VERSION = 1.4;            // See changelog.txt.
+const float VERSION = 1.5;            // See changelog.txt.
 const Time INIT_RTT = Time(1000000);  // Nanoseconds (.001 sec).
 const double INIT_BW = 6.0;           // Mb/s. 
 const int RTT_WINDOW_TIME = 10;       // In seconds.
@@ -47,10 +60,18 @@ const float STARTUP_THRESHOLD = 1.25; // Threshold to exit STARTUP.
 const float STARTUP_GAIN = 2.89;      // Roughly 2/ln(2).
 
 // Structure for tracking TCP window for estimating BW.
-struct bw_est_struct {
+struct packet_struct {
   SequenceNumber32 acked;  // Last sequence number acked.
   SequenceNumber32 sent;   // Next sequence number sent.
   Time time;               // Time sent.
+  int delivered;           // Delivered bytes.
+};
+
+// Structure for storing BW estimates.
+struct bw_struct {
+  Time time;               // Time stored.
+  int round;               // Virtual time stored.
+  double bw_est;           // Bandwidth estimate.
 };
 
 } // end of namespace bbr
@@ -130,11 +151,14 @@ private:
   void cullRTTwindow();
 
 protected:
-  double m_pacing_gain;                    // Scale estimated BDP for pacing rate.
+  double m_pacing_gain;                    // Scale estimated BDP for pacing.
   double m_cwnd_gain;                      // Scale estimated BDP for cwnd.
-  std::map<Time, Time> m_rtt_window;       // For computing min RTT at sender.
-  std::map<Time, double> m_bw_window;      // For computing max BW at sender.
-  std::vector<bbr::bw_est_struct> m_est_window; // For estimating BW from ACKs.
+  int m_round;                             // For recording virtual RTT time.
+  int m_delivered;                         // For computing virtual RTT rounds.
+  int m_next_round_delivered;              // For computing virtual RTT rounds.
+  std::map<Time, Time> m_rtt_window;       // For computing min RTT.
+  std::vector<bbr::bw_struct> m_bw_window; // For computing max BW.
+  std::vector<bbr::packet_struct> m_pkt_window; // For estimating BW from ACKs.
   uint32_t m_bytes_in_flight;              // Bytes in flight (from socket base).
   Time m_min_rtt_change;                   // Last time min RTT changed.
   BbrStateMachine m_machine;               // State machine.

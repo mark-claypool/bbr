@@ -1,7 +1,5 @@
-README
-======
+# README
 
-BBR source for ns-3 (version 3.27).
+BBR' source for ns-3 (version 3.27).
 
-See: (../README.md)[../README.md] for use.
-
+See main (../../README.md)[../../README.md] for use.

@@ -9,8 +9,6 @@
 //
 // - Tracing of queues and packet receptions to file "*.tr" and
 //   "*.pcap" when tracing is turned on.
-// 
-// - Change of bandwidth UP partway through, then DOWN before end.
 //
 
 // System includes.
@@ -29,8 +27,8 @@
 using namespace ns3;
 
 // Constants.
-#define ENABLE_PCAP      true      // Set to "false" to disable pcap
-#define ENABLE_TRACE     true      // Set to "false" to disable trace
+#define ENABLE_PCAP      false     // Set to "true" to enable pcap
+#define ENABLE_TRACE     false     // Set to "true" to enable trace
 #define BIG_QUEUE        2000      // Packets
 #define QUEUE_SIZE       100       // Packets
 #define START_TIME       0.0       // Seconds
@@ -45,15 +43,20 @@ using namespace ns3;
 #define TCP_PROTOCOL     "ns3::TcpBbr"
 //#define TCP_PROTOCOL     "ns3::TcpNewReno"
 
-// For logging.  Note, to display, set environment variable:
-NS_LOG_COMPONENT_DEFINE ("main");
+// For logging. 
 
+NS_LOG_COMPONENT_DEFINE ("main");
 /////////////////////////////////////////////////
 int main (int argc, char *argv[]) {
 
   /////////////////////////////////////////
+  // Turn on logging for this script.
+  // Note: for BBR', other components that may be
+  // of interest include "TcpBbr" and "BbrState".
+  LogComponentEnable("main", LOG_LEVEL_INFO);
+
+  /////////////////////////////////////////
   // Setup environment
-  LogComponentEnable("PacketSink", LOG_LEVEL_INFO);
   Config::SetDefault("ns3::TcpL4Protocol::SocketType",
                      StringValue(TCP_PROTOCOL));
 
@@ -65,12 +68,12 @@ int main (int argc, char *argv[]) {
   NS_LOG_INFO("Router to Client Delay: " << R_TO_C_DELAY);
   NS_LOG_INFO("Packet size (bytes): " << PACKET_SIZE);
   
-  // Set segment size (otherwise, default is 536).
+  // Set segment size (otherwise, ns-3 default is 536).
   Config::SetDefault("ns3::TcpSocket::SegmentSize",
                      UintegerValue(PACKET_SIZE)); 
 
   // Turn off delayed ack (so, acks every packet).
-  // Note, BBR' can still work without this.
+  // Note, BBR' still works without this.
   Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(0));
    
   /////////////////////////////////////////
@@ -109,6 +112,7 @@ int main (int argc, char *argv[]) {
 
   /////////////////////////////////////////
   // Install Internet stack.
+  NS_LOG_INFO("Installing Internet stack.");
   InternetStackHelper internet;
   internet.Install(nodes);
   
@@ -158,19 +162,20 @@ int main (int argc, char *argv[]) {
     p2p.EnableAsciiAll(ath.CreateFileStream("trace.tr"));
   }  
   if (ENABLE_PCAP) {
-    NS_LOG_INFO("Enabling pcap file.");
+    NS_LOG_INFO("Enabling pcap files.");
     p2p.EnablePcapAll("shark", true);
   }
 
   /////////////////////////////////////////
   // Run simulation.
+  NS_LOG_INFO("Running simulation.");
   Simulator::Stop(Seconds(STOP_TIME));
   NS_LOG_INFO("Simulation time: [" << 
               START_TIME << "," <<
               STOP_TIME << "]");
-  NS_LOG_INFO("--------------------------------------------");
+  NS_LOG_INFO("---------------- Start -----------------------");
   Simulator::Run();
-  NS_LOG_INFO("--------------------------------------------");
+  NS_LOG_INFO("---------------- Stop ------------------------");
 
   /////////////////////////////////////////
   // Ouput stats.

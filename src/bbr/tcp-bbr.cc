@@ -40,6 +40,9 @@ TcpBbr::TcpBbr(void) :
   TcpCongestionOps(),
   m_pacing_gain(0.0),
   m_cwnd_gain(0.0),
+  m_round(0),
+  m_delivered(0),
+  m_next_round_delivered(0),
   m_bytes_in_flight(0),
   m_min_rtt_change(Time(0)),
   m_machine(this),
@@ -63,6 +66,16 @@ TcpBbr::TcpBbr(void) :
   NS_LOG_INFO(this << "  DRAIN_FACTOR: " << bbr::DRAIN_FACTOR);
   NS_LOG_INFO(this << "  PACING_FACTOR: " << bbr::PACING_FACTOR);
 
+  // Timing config (used for culling BW window) in "tcp-bbr.h"
+  if (bbr::TIME_CONFIG == bbr::WALLCLOCK_TIME) 
+    NS_LOG_INFO("TIME_CONFIG: WALLCLOCK_TIME - BW window culling with wallclock time.");
+  else if (bbr::TIME_CONFIG == bbr::PACKET_TIME) 
+    NS_LOG_INFO("TIME_CONFIG: PACKET_TIME - BW window culling with packet time.");
+  else  {
+    NS_LOG_INFO("WARNING! Unknown TIME_CONFIG: " << bbr::TIME_CONFIG);
+    NS_LOG_INFO("BW window culling with packet time.");
+  }
+
   // Constant in "tcp-socket-base.h"
   if (PACING_CONFIG == NO_PACING) 
     NS_LOG_INFO(this << "  Note: BBR' configured with pacing NO_PACING.");
@@ -76,6 +89,9 @@ TcpBbr::TcpBbr(const TcpBbr &sock) :
   TcpCongestionOps(sock),
   m_pacing_gain(0.0),
   m_cwnd_gain(0.0),
+  m_round(0),
+  m_delivered(0),
+  m_next_round_delivered(0),
   m_bytes_in_flight(0),
   m_min_rtt_change(Time(0)),
   m_machine(this),
@@ -179,9 +195,25 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
 
   SequenceNumber32 ack = tcb->m_lastAckedSeq;  // W_s
   now = Simulator::Now();                      // W_t'
+  bbr::packet_struct packet;
 
-  // If ack earlier than first, unknown when sent so ignore.
-  auto first = m_est_window.begin()->sent;
+  // Update packet-timed RTT.
+  m_delivered += tcb->m_segmentSize;
+  packet.delivered = -1;
+  for (auto it = m_pkt_window.begin(); it != m_pkt_window.end(); it++){
+    if (it->sent == ack)
+      packet = *it;
+  }
+  if (packet.delivered >= m_next_round_delivered) {
+    m_next_round_delivered = m_delivered;
+    m_round++;
+    NS_LOG_INFO(this << " New packet-timed RTT.  Round: " << m_round);
+  }
+    
+  // If ack earlier than first (or list empty), unknown when sent so ignore.
+  if (m_pkt_window.size() == 0)
+    return;
+  auto first = m_pkt_window.begin()->sent;
   if (ack < first) {
     NS_LOG_INFO(this << " Extra SendPendingData() sent: "<< ack);
     NS_LOG_INFO(this << " Earliest in list: "<< first);
@@ -189,26 +221,29 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   }
 
   // Find newest ack in window, <= current. Note, window is sorted.
-  bbr::bw_est_struct temp;
-  for (auto it = m_est_window.begin(); it != m_est_window.end(); it++)
+  for (auto it = m_pkt_window.begin(); it != m_pkt_window.end(); it++)
     if (it->sent <= ack)                       // W_a
-      temp = *it;
+      packet = *it;
 
   // Remove all acks <= current from window.
-  for (unsigned int i=0; i < m_est_window.size(); )
-    if (m_est_window[i].sent <= temp.sent) 
-      m_est_window.erase(m_est_window.begin() + i);
+  for (unsigned int i=0; i < m_pkt_window.size(); )
+    if (m_pkt_window[i].sent <= packet.sent) 
+      m_pkt_window.erase(m_pkt_window.begin() + i);
     else
       i++;
         
   // Estimate BW: bw = (W_s - W_a) / (W_t' - W_t)
-  double bw_est = (ack - temp.acked) /
-                  (now.GetSeconds() - temp.time.GetSeconds());
+  double bw_est = (ack - packet.acked) /
+                  (now.GetSeconds() - packet.time.GetSeconds());
   bw_est *= 8;          // Convert to b/s.
   bw_est /= 1000000;    // Convert to Mb/s.
 
   // Add to BW window.
-  m_bw_window[now] = bw_est;
+  bbr::bw_struct bw;
+  bw.bw_est = bw_est;
+  bw.time = now;
+  bw.round = m_round;
+  m_bw_window.push_back(bw);
 
   // Set pacing rate (in Mb/s), adjusted by gain.
   double pacing_rate = getBW() * m_pacing_gain;
@@ -224,12 +259,13 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
     tcb -> SetPacingRate(pacing_rate);
 
   // Report data.
+  NS_LOG_INFO(this << "  m_round: " << m_round);
   NS_LOG_INFO(this << "  W_s: " << ack);
-  NS_LOG_INFO(this << "  W_a: " << temp.acked);
+  NS_LOG_INFO(this << "  W_a: " << packet.acked);
   NS_LOG_INFO(this << "  Time (W_t): " << now.GetSeconds() << " seconds");
-  NS_LOG_INFO(this << "  W_s time (W_t'): " << temp.time.GetSeconds() << " seconds");
-  NS_LOG_INFO(this << "  byte-diff: " << (ack - temp.acked));
-  NS_LOG_INFO(this << "  time-diff: " << (now.GetSeconds() - temp.time.GetSeconds()));
+  NS_LOG_INFO(this << "  W_s time (W_t'): " << packet.time.GetSeconds() << " seconds");
+  NS_LOG_INFO(this << "  byte-diff: " << (ack - packet.acked));
+  NS_LOG_INFO(this << "  time-diff: " << (now.GetSeconds() - packet.time.GetSeconds()));
   
   NS_LOG_INFO(this << "  bw: " << bw_est);
   
@@ -271,14 +307,15 @@ void TcpBbr::Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb) {
   m_bytes_in_flight = tsb -> BytesInFlight();
 
   // Get last sequence number acked.
-  bbr::bw_est_struct bw_est;
-  bw_est.acked = tcb -> m_lastAckedSeq;
-  bw_est.sent = tcb -> m_nextTxSequence;
-  bw_est.time = Simulator::Now();
-  m_est_window.push_back(bw_est);
+  bbr::packet_struct p;
+  p.acked = tcb -> m_lastAckedSeq;
+  p.sent = tcb -> m_nextTxSequence;
+  p.time = Simulator::Now();
+  p.delivered = m_delivered;
+  m_pkt_window.push_back(p);
   
-  NS_LOG_INFO(this << "  Last acked seq: " << bw_est.acked);
-  NS_LOG_INFO(this << "     Sending seq: " << bw_est.sent);
+  NS_LOG_INFO(this << "  Last acked seq: " << p.acked);
+  NS_LOG_INFO(this << "     Sending seq: " << p.sent);
 
   double cwnd;
   double bdp = 0.0;
@@ -315,6 +352,7 @@ void TcpBbr::Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb) {
   // Set cwnd (in bytes).
   tcb -> m_cWnd = (uint32_t) cwnd;
 
+  // Log info.
   NS_LOG_INFO(this << "  DATA " <<
               "bdp: " << bdp << " (Mb), " << bdp * 1000000/8 << " (B)  " <<
               "cwnd-gain " << m_cwnd_gain <<  "  " <<
@@ -338,7 +376,7 @@ double TcpBbr::getBW() const {
 
     // Find max BW in window.
     for (auto it = m_bw_window.begin(); it != m_bw_window.end(); it++)
-      max_bw = std::max(max_bw, it->second);
+      max_bw = std::max(max_bw, it->bw_est);
   
   NS_LOG_INFO(this << "  DATA bws in window: " << m_bw_window.size() <<
               "  max_bw: " << max_bw);
@@ -401,25 +439,39 @@ void TcpBbr::cullBWwindow() {
 
   // Compute time delta, 10 RTTs ago until now.
   Time now = Simulator::Now();
-  Time delta = now - rtt * bbr::BW_WINDOW_TIME;
-
+  Time time_delta = now - rtt * bbr::BW_WINDOW_TIME;
+  int round_delta = m_round - bbr::BW_WINDOW_TIME;
+  
   // Erase any values that are too old.
   auto it = m_bw_window.begin();
   while (it != m_bw_window.end()) {
-    if (it -> first < delta)
-      it = m_bw_window.erase(it);
-    else
-      it++;
+
+    // Configured with either WALLCLOCK or PACKET time.
+    if (bbr::TIME_CONFIG == bbr::WALLCLOCK_TIME) { // Use wallclock time.
+      if (it -> time < time_delta)
+        it = m_bw_window.erase(it);
+      else
+        it++;
+    } else {                          // Use packet time.
+      if (it -> round < round_delta)
+        it = m_bw_window.erase(it);
+      else
+        it++;
+    }
+
   }
- 
+
+  // Log info.
   int size = m_bw_window.size();
   if (size == 0)
     NS_LOG_INFO(this << " BW window empty.");
   else
     NS_LOG_INFO(this << " DATA" <<
-                "  m_bw_window_size: " << size <<
-                " [" << m_bw_window.begin()->first.GetSeconds() << ", " <<
-                m_bw_window.rbegin()->first.GetSeconds() << "]");
+               "  m_bw_window_size: " << size <<
+                " [" << m_bw_window.begin()->round << ", " <<
+                m_bw_window.rbegin()->round << "]" << 
+                " [" << m_bw_window.begin()->time.GetSeconds() << ", " <<
+                m_bw_window.rbegin()->time.GetSeconds() << "]");
 }
 
 // Remove RTT estimates that are too old (greater than 10 seconds).
