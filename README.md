@@ -6,7 +6,7 @@ See the [Technical Report (CCL18)](#ccl18) for details.
 
 -- Mark Claypool [claypool@cs.wpi.edu](claypool@cs.wpi.edu)
 
-<hr>
+-----------------------------------
 [Directories](#dir) | [Install](#inst) | [Misc](#misc) | [ToDo](#todo) | [Referenes](#refs)
 <hr>
 
@@ -238,7 +238,7 @@ Institute, January 2018.
 and V. Jacobson.  [BBR Congestion Control](https://goo.gl/dxV24D),
 IETF Draft draft-cardwell-iccrg-bbr-congestion-control-00, July 2017.
 
-<hr>
+-----------------------------------
 [Directories](#dir) | [Install](#inst) | [Misc](#misc) | [ToDo](#todo) | [Referenes](#refs)
 <hr>
 
