@@ -20,7 +20,7 @@ src/ - BBR' source code and ns-3 source files that need changes.
 patch/ - directory with patchfile for ns-3 allinone tree.
 
 
-## <a name="inst"></a>TO INSTALL
+## <a name="inst"></a>INSTALL
 
 These instructions are to install BBR' to the ns-allinone package
 (version 3.27).  Mileage may vary for alternate uses.
@@ -212,12 +212,13 @@ See Section 4.3.4.4.
 additional transition from PROBE_RTT to STARTUP.  See Section 4.3.5.
 
 + BBR' supports congestion window (cwnd) manipulation, but does not
-adjust cwnd targets in all cases (e.g., during loss recovery).  See
-Section 4.2.3.
+adjust cwnd targets in all the cases that BBR does (e.g., during loss
+recovery).  See Section 4.2.3.
 
-+ BBR includes a "send quantum" which is used to amortize per-packet
-host overheads involved in the sending process.  Supposedly, this can
-be helpful at low rates with small packets.  See Section 4.2.2.
++ BBR' does not include the "send quantum" in BBR which is used to
+amortize per-packet host overheads involved in the sending process.
+Supposedly, this can be helpful at low rates with small packets.  See
+Section 4.2.2.
 
 
 ## <a name="refs"></a>REFERENCES
