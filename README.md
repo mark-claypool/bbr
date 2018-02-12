@@ -7,7 +7,7 @@ See the [Technical Report (CCL18)](#ccl18) for details.
 -- Mark Claypool [claypool@cs.wpi.edu](claypool@cs.wpi.edu)
 
 -----------------------------------------------------------------------------
-[Dirs](#dir) | [Install](#inst) | [Misc](#misc) | [ToDo](#todo) [Refs](#refs)
+[Dirs](#dir)|[Install](#inst)|[Misc](#misc)|[ToDo](#todo)|[Refs](#refs)
 -----------------------------------------------------------------------------
 
 ## <a name="dir"></a>DIRECTORIES
