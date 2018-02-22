@@ -1,11 +1,15 @@
 # BBR' Changelog
 
+v1.6 - Updated cwnd response to packet loss (RTO and Fast Recovery).
+       Changed BW estimates to ignore retransmission sequences.
+       Moved most NS_LOG messages from INFO to LOGIC.
+
 v1.5 - Changed BW window culling to use packet-timed round trip time
        instead of wall-clock round trip time.  Wall-clock remains a
        config option.
 
 v1.4 - Updated BBR' PktsAcked() to ignore acks when sending time 
-       unknown.
+       unknown (e.g., during retransmission sequence).
 
 v1.3 - Re-worked RTT and BW windows to use actual times.
        Added configuration option for pacing/non-pacing/tcp-pacing.

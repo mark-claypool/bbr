@@ -22,6 +22,8 @@
 #define TCP_SOCKET_BASE_H
 
 ///////////////////////////////////////////////////////////////////
+// ADDITIONS FOR PACING: START
+
 // Configuration options (to support BBR' and any paced protocols):
 // TCP_PACING - Packet pacing is done in TCP (in socket-base.cc).
 // APP_PACING - Packet pacing is NOT done in TCP, only in the application.
@@ -29,8 +31,11 @@
 enum enum_pacing_config {TCP_PACING, APP_PACING, NO_PACING};
 
 // Actual configuration option.
-const enum_pacing_config PACING_CONFIG = NO_PACING;
+const enum_pacing_config PACING_CONFIG = TCP_PACING;
+//const enum_pacing_config PACING_CONFIG = NO_PACING;
+//const enum_pacing_config PACING_CONFIG = APP_PACING;
 
+// ADDITIONS FOR PACING: END
 ///////////////////////////////////////////////////////////////////
 
 #include <stdint.h>
@@ -1102,17 +1107,18 @@ protected:
   static uint32_t SafeSubtraction (uint32_t a, uint32_t b);
 
   //////////////////////////////
-  // Additions for pacing.
+  // ADDITIONS FOR PACING: START
 public:  
   void SetPacingRate (double pacing_rate);
   double GetPacingRate () const;
+  virtual int pacingQueueBytes (void) const;
 
-  // Additions for pacing in TCP.
 protected:
   EventId           m_pacing_event;                // Pacing event.
   std::queue<tcp_pacing_struct> m_pacing_packets;  // Pacing packets.
 private:
   void PacePackets();
+  // ADDITIONS FOR PACING: END
   //////////////////////////////
   
 protected:

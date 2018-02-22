@@ -208,18 +208,13 @@ are application-limited.  See Section 4.1.1.4.  This also means BBR'
 does not support restarting a flow from idle, a special case in BBR.
 See Section 4.3.4.4.
 
-+ BBR' only transitions from PROBE_RTT to PROBE_BW while BBR has an
-additional transition from PROBE_RTT to STARTUP.  See Section 4.3.5.
-
-+ BBR' supports congestion window (cwnd) manipulation, but does not
-adjust cwnd targets in all the cases that BBR does (e.g., during loss
-recovery).  See Section 4.2.3.
++ BBR' only transitions to/from PROBE_RTT from PROBE_BW, while BBR has
+additional transitions for PROBE_RTT.  See Section 4.3.5.
 
 + BBR' does not include the "send quantum" in BBR which is used to
 amortize per-packet host overheads involved in the sending process.
-Supposedly, this can be helpful at low rates with small packets.  See
-Section 4.2.2.
-
+The send quantum parameter can be helpful at low rates with small
+packets.  See Section 4.2.2.
 
 ## <a name="refs"></a>REFERENCES
 
@@ -228,9 +223,9 @@ V. Jacobson.  [BBR: Congestion-Based Congestion
 Control](https://goo.gl/PLN3fA), *Communications of the ACM*, 60(2),
 February 2017.
 
-[<a name="ccl18">CCL18</a>] M. Claypool, J.W. Chung, and
-F. Li. [BBR' - An Implementation of Bottleneck Bandwidth and
-Round-trip Time Congestion Control for
+[<a name="ccl18">CCL18</a>] M. Claypool, J.W. Chung, and F. Li.
+[BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
+Congestion Control for
 ns-3](ftp://ftp.cs.wpi.edu/pub/techreports/pdf/18-01.pdf), Technical
 Report WPI-CS-TR-18-01, Computer Science, Worcester Polytechnic
 Institute, January 2018.

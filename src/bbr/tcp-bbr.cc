@@ -45,6 +45,11 @@ TcpBbr::TcpBbr(void) :
   m_next_round_delivered(0),
   m_bytes_in_flight(0),
   m_min_rtt_change(Time(0)),
+  m_cwnd(0.0),
+  m_prior_cwnd(0.0), 
+  m_packet_conservation(Time(0)),
+  m_in_retrans_seq(false),
+  m_retrans_seq(0),
   m_machine(this),
   m_state_startup(this),
   m_state_drain(this),
@@ -94,6 +99,11 @@ TcpBbr::TcpBbr(const TcpBbr &sock) :
   m_next_round_delivered(0),
   m_bytes_in_flight(0),
   m_min_rtt_change(Time(0)),
+  m_cwnd(0.0),
+  m_prior_cwnd(0.0), 
+  m_packet_conservation(Time(0)),
+  m_in_retrans_seq(false),
+  m_retrans_seq(0),
   m_machine(this),
   m_state_startup(this),
   m_state_drain(this),
@@ -145,8 +155,11 @@ uint32_t TcpBbr::GetSsThresh(Ptr<const TcpSocketState> tcb,
   return 65535;
 }
 
-// On receiving ack, store RTT and estimated BW.
-// Compute and set pacing rate.
+// On receiving ack:
+// - update congestion window
+// - store RTT
+// - compute and store estimated BW
+// - compute and set pacing rate
 // tcb = transmission control block
 void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
                        const Time &rtt) {
@@ -154,7 +167,37 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   NS_LOG_FUNCTION(this << packets_acked << rtt);
 
   ////////////////////////////////////////////
-  // RTT
+  // UPDATE TCP CONGESTION WINDOW (CWND)
+
+  uint32_t bytes_delivered = packets_acked * 1500;
+
+  // If in Fast Recovery, target cwnd was set in CongestionStateSet().
+  if (tcb->m_congState == TcpSocketState::CA_RECOVERY) {
+    // If in first RTT of Fast Recovery, modulate cwnd.
+    if (m_packet_conservation > Simulator::Now()) {
+      NS_LOG_LOGIC(this << "  Modulating cwnd until: " <<
+                  m_packet_conservation.GetSeconds());
+      NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
+                  "  bytes_in_flight: " << m_bytes_in_flight <<
+                  "  bytes_delivered: " << bytes_delivered);
+      if ((m_bytes_in_flight + bytes_delivered) > m_cwnd)
+        m_cwnd = m_bytes_in_flight + bytes_delivered;
+    }
+  } else {
+    // Not in Fast Recovery, so re-compute target cwnd.
+    updateTargetCwnd();
+  }
+
+  // If growing cwnd, do so conservatively.
+  if (tcb -> m_cWnd < m_cwnd) {
+    NS_LOG_LOGIC(this << "  Increasing cwnd by: " << bytes_delivered);
+    tcb -> m_cWnd = tcb -> m_cWnd + bytes_delivered;
+  } else
+    // If shrinking cwnd, adjust immediately.
+    tcb -> m_cWnd = m_cwnd;
+
+  ////////////////////////////////////////////
+  // STORE RTT
   if (rtt.IsZero() || rtt.IsNegative()) {
     NS_LOG_WARN("RTT measured is zero (or less)! Not stored.");
     return;
@@ -164,7 +207,7 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   Time now = Simulator::Now();
   Time min_rtt = getRTT();
   if (rtt < getRTT()) {
-    NS_LOG_INFO(this << "  New min RTT: " << 
+    NS_LOG_LOGIC(this << "  New min RTT: " << 
                 rtt << " sec (was: " << min_rtt.GetSeconds() << ")");
     m_min_rtt_change = now;  
   }
@@ -174,7 +217,7 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
 
   // Upon first RTT, call update() to initialize timer.
   if (m_rtt_window.size() == 1) {
-    NS_LOG_INFO(this << "  First rtt, calling update() to init.");
+    NS_LOG_LOGIC(this << "  First rtt, calling update() to init.");
     m_machine.update();
   }
 
@@ -183,12 +226,14 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   // Based on [CCYJ17b]:
   // Cheng et al., "Delivery Rate Estimation", IETF Draft, Jul 3, 2017
   //
-  // Send() for W_s:                       (outstanding)
-  //   Have TCP Window, (latest acked) W_a [W_1 ... W_n] W_s (next sent)
+  //                                (outstanding)
+  // TCP Window: (latest ACKed) W_a [W_1 ... W_n] W_s (next sent)
+  //
+  // Send() 
   //   Record W_a
   //   Record time W_t
   //   Send W_s
-  // PktsAcked() for W_s:
+  // PktsAcked()
   //   Record time W_t'
   //   Compute BW: bw = (W_s - W_a) / (W_t' - W_t)
   //   Update data structures
@@ -200,55 +245,79 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   // Update packet-timed RTT.
   m_delivered += tcb->m_segmentSize;
   packet.delivered = -1;
-  for (auto it = m_pkt_window.begin(); it != m_pkt_window.end(); it++){
+  for (auto it = m_pkt_window.begin(); it != m_pkt_window.end(); it++) {
     if (it->sent == ack)
       packet = *it;
   }
   if (packet.delivered >= m_next_round_delivered) {
     m_next_round_delivered = m_delivered;
     m_round++;
-    NS_LOG_INFO(this << " New packet-timed RTT.  Round: " << m_round);
+    NS_LOG_LOGIC(this << " New packet-timed RTT.  Round: " << m_round);
   }
-    
-  // If ack earlier than first (or list empty), unknown when sent so ignore.
-  if (m_pkt_window.size() == 0)
-    return;
+
+  // See if retransmission sequence should end.
+  bool do_est_bw = true;
+  if (m_in_retrans_seq) {
+    NS_LOG_LOGIC(this << "  In retransmission sequence: " << m_retrans_seq);
+    if (ack != m_retrans_seq) {
+      m_in_retrans_seq = false;
+      NS_LOG_LOGIC(this << "  Retransmission sequence ended: " << ack);
+    }
+    // Don't estimate BW if in retrans sequence (or just ending_.
+    do_est_bw = false; 
+  }
+
+  // If ack not in list (or list empty), unknown when sent so ignore.
+  // This happens most often during retransmission sequences.
+  if (m_pkt_window.size() == 0) {
+    NS_LOG_LOGIC(this << " Packet window size is zero.");
+    return; // Nothing more to do.
+  }
   auto first = m_pkt_window.begin()->sent;
   if (ack < first) {
-    NS_LOG_INFO(this << " Extra SendPendingData() sent: "<< ack);
-    NS_LOG_INFO(this << " Earliest in list: "<< first);
+    NS_LOG_LOGIC(this << " Not found.  Ack: "<< ack <<
+                "  Earliest in list: "<< first);
     return;  // Nothing more to do.
   }
 
-  // Find newest ack in window, <= current. Note, window is sorted.
+  // Find oldest ack in window, <= current.
+  packet.sent = 0;
+  packet.time = Time(0);
   for (auto it = m_pkt_window.begin(); it != m_pkt_window.end(); it++)
-    if (it->sent <= ack)                       // W_a
-      packet = *it;
+    if (it->sent <= ack && it->sent > packet.sent)
+      packet = *it;  // W_a
 
-  // Remove all acks <= current from window.
+  // Remove all entries with acks <= current from window.
   for (unsigned int i=0; i < m_pkt_window.size(); )
     if (m_pkt_window[i].sent <= packet.sent) 
       m_pkt_window.erase(m_pkt_window.begin() + i);
     else
       i++;
-        
-  // Estimate BW: bw = (W_s - W_a) / (W_t' - W_t)
-  double bw_est = (ack - packet.acked) /
-                  (now.GetSeconds() - packet.time.GetSeconds());
-  bw_est *= 8;          // Convert to b/s.
-  bw_est /= 1000000;    // Convert to Mb/s.
 
-  // Add to BW window.
-  bbr::bw_struct bw;
-  bw.bw_est = bw_est;
-  bw.time = now;
-  bw.round = m_round;
-  m_bw_window.push_back(bw);
+  // Estimate BW.
+  double bw_est = 0.0;
+  if (do_est_bw) {
 
+    // Estimate BW: bw = (W_s - W_a) / (W_t' - W_t)
+    bw_est = (ack - packet.acked) /
+             (now.GetSeconds() - packet.time.GetSeconds());
+    bw_est *= 8;          // Convert to b/s.
+    bw_est /= 1000000;    // Convert to Mb/s.
+
+    // Add to BW window.
+    bbr::bw_struct bw;
+    bw.bw_est = bw_est;
+    bw.time = now;
+    bw.round = m_round;
+    m_bw_window.push_back(bw);
+  }
+
+  ////////////////////////////////////////////
+  // COMPUTE AND SET PACING RATE.
   // Set pacing rate (in Mb/s), adjusted by gain.
   double pacing_rate = getBW() * m_pacing_gain;
 
-  // There may be some advantages to pacing at less than the BW.
+  // There may be some advantages to pacing at just under the BW.
   // Either way, this is adjustable in the header file.
   if (m_pacing_gain == 1)
     pacing_rate *= bbr::PACING_FACTOR;
@@ -258,17 +327,17 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   if (PACING_CONFIG != NO_PACING)
     tcb -> SetPacingRate(pacing_rate);
 
+  ////////////////////////////////////////////
   // Report data.
-  NS_LOG_INFO(this << "  m_round: " << m_round);
-  NS_LOG_INFO(this << "  W_s: " << ack);
-  NS_LOG_INFO(this << "  W_a: " << packet.acked);
-  NS_LOG_INFO(this << "  Time (W_t): " << now.GetSeconds() << " seconds");
-  NS_LOG_INFO(this << "  W_s time (W_t'): " << packet.time.GetSeconds() << " seconds");
-  NS_LOG_INFO(this << "  byte-diff: " << (ack - packet.acked));
-  NS_LOG_INFO(this << "  time-diff: " << (now.GetSeconds() - packet.time.GetSeconds()));
-  
-  NS_LOG_INFO(this << "  bw: " << bw_est);
-  
+  NS_LOG_LOGIC(this << 
+              " m_round: " << m_round <<
+              "  W_s: " << ack <<
+              "  W_a: " << packet.acked <<
+              "  W_t': " << now.GetSeconds() <<
+              "  W_t: " << packet.time.GetSeconds());
+  NS_LOG_LOGIC(this << "  byte-diff: " << (ack - packet.acked));
+  NS_LOG_LOGIC(this << "  time-diff: " <<
+              (now.GetSeconds() - packet.time.GetSeconds()));
   NS_LOG_INFO(this << "  DATA rtt: " << rtt.GetSeconds() << "  " <<
               "pacing-gain " << m_pacing_gain <<  "  " <<
               "pacing-rate " << pacing_rate << " Mb/s  " <<
@@ -276,88 +345,41 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
 }
 
 // Before sending packet:
-// - Update TCP window
 // - Record information to estimate BW
 // tsb = tcp socket base
 // tcb = transmission control block
-void TcpBbr::Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb) {
+void TcpBbr::Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb,
+                  SequenceNumber32 seq, bool isRetrans) {
 
   NS_LOG_FUNCTION(this);
 
-  ////////////////////////////////////////////
-  // BW ESTIMATION
-  //
-  // Record information to estimate BW upon ACK (in PktsAcked()).
-  //
-  // Based on [CCYJ17b]:
-  // Based on:
-  // Cheng et al., "Delivery Rate Estimation", IETF Draft, Jul 3, 2017
-  //
-  // Send() for W_s:                       (outstanding)
-  //   Have TCP Window, (latest acked) W_a [W_1 ... W_n] W_s (next sent)
-  //   Record W_a
-  //   Record time W_t
-  //   Send W_s
-  // PktsAcked() for W_s:
-  //   Record time W_t'
-  //   Compute BW: bw = (W_s - W_a) / (W_t' - W_t)
-  //   Update data structures
-
-  // Get the bytes in flight (needed for STARTUP).
+  // Get the bytes in flight (needed for STARTUP/CA_RECOVERY).
   m_bytes_in_flight = tsb -> BytesInFlight();
 
-  // Get last sequence number acked.
-  bbr::packet_struct p;
-  p.acked = tcb -> m_lastAckedSeq;
-  p.sent = tcb -> m_nextTxSequence;
-  p.time = Simulator::Now();
-  p.delivered = m_delivered;
-  m_pkt_window.push_back(p);
-  
-  NS_LOG_INFO(this << "  Last acked seq: " << p.acked);
-  NS_LOG_INFO(this << "     Sending seq: " << p.sent);
-
-  double cwnd;
-  double bdp = 0.0;
-
-  ////////////////////////////////////////////
-  // SET TCP CONGESTION WINDOW (CWND).
-  
-  // Special case: if in PROBE_RTT state, set window to minimum.
-  if (m_machine.getStateType() == bbr::PROBE_RTT_STATE) {
-
-    cwnd = bbr::MIN_CWND * 1500; // In bytes.
-    NS_LOG_INFO(this << "  In PROBE_RTT. Window min: " << bbr::MIN_CWND << " pkts");
-
-  } else {
-
-    // Compute TCP cwnd based on BDP and gain.
-    bdp = getBDP();
-    if (PACING_CONFIG == NO_PACING)
-      // If no pacing, cwnd is used to control pace.
-      cwnd = bdp * m_pacing_gain;
-    else
-      // If pacing, cwnd adjusted larger.
-      cwnd = bdp * m_cwnd_gain;
-    cwnd = cwnd * 1000000 / 8; // Mbits to bytes.
-
-    // Make sure cwnd not too small (roughly, 4 packets).
-    if ((cwnd / 1500) < bbr::MIN_CWND) {
-      NS_LOG_INFO(this << "  Boosting cwnd to 4 x 1500B packets.");
-      cwnd = bbr::MIN_CWND * 1500; // In bytes.
-    }
-
+  // If retransmission, start sequence (PktsAcked() finds end of sequence).
+  if (isRetrans) {
+    m_in_retrans_seq = true;
+    m_retrans_seq = seq;
+    NS_LOG_LOGIC(this << "  Starting retrans sequence: " << seq);
   }
 
-  // Set cwnd (in bytes).
-  tcb -> m_cWnd = (uint32_t) cwnd;
+  // If not in retrans sequence, record info for BW est (in PktsAcked()).
+  if (!m_in_retrans_seq) {
 
-  // Log info.
-  NS_LOG_INFO(this << "  DATA " <<
-              "bdp: " << bdp << " (Mb), " << bdp * 1000000/8 << " (B)  " <<
-              "cwnd-gain " << m_cwnd_gain <<  "  " <<
-              "cwnd " << cwnd << " (B)  "
-              "bytes-in-flight " <<  m_bytes_in_flight);
+    // Get last sequence number ACKed.
+    bbr::packet_struct p;
+    p.acked = tcb -> m_lastAckedSeq;
+    p.sent = seq;
+    p.time = Simulator::Now();
+    p.delivered = m_delivered;
+    m_pkt_window.push_back(p);
+  
+    NS_LOG_LOGIC(this << "  Last acked: " << p.acked <<
+                " Next sequence: " << p.sent);
+  } else {
+    NS_LOG_LOGIC(this << "  seq: " << seq <<
+                "  In retrans sequence: " << m_retrans_seq);
+  }
 }
 
 // Return bandwidth (maximum of window, in Mb/s).
@@ -464,7 +486,7 @@ void TcpBbr::cullBWwindow() {
   // Log info.
   int size = m_bw_window.size();
   if (size == 0)
-    NS_LOG_INFO(this << " BW window empty.");
+    NS_LOG_LOGIC(this << " BW window empty.");
   else
     NS_LOG_INFO(this << " DATA" <<
                "  m_bw_window_size: " << size <<
@@ -499,7 +521,7 @@ void TcpBbr::cullRTTwindow() {
  
   int size = m_rtt_window.size();
   if (size == 0)
-    NS_LOG_INFO(this << " RTT window empty.");
+    NS_LOG_LOGIC(this << " RTT window empty.");
   else
     NS_LOG_INFO(this << " DATA" <<
                 "  m_rtt_window_size: " << size <<
@@ -512,19 +534,85 @@ bool TcpBbr::checkProbeRTT() {
 
   NS_LOG_FUNCTION(this);
 
-  // In PROBE_BW state and min RTT hasn't changed in 10 seconds.
+  // Check if PROBE_BW and min RTT hasn't changed in 10 seconds.
   Time now = Simulator::Now();
   if (m_machine.getStateType() == bbr::PROBE_BW_STATE &&
-      (now.GetSeconds() - m_min_rtt_change.GetSeconds()) > 10) {
+      (now.GetSeconds() - m_min_rtt_change.GetSeconds()) >
+      bbr::RTT_NOCHANGE_LIMIT) {
 
-    NS_LOG_INFO(this << "  min RTT last changed: " << m_min_rtt_change.GetSeconds());
+    NS_LOG_LOGIC(this << "  min RTT last changed: " << m_min_rtt_change.GetSeconds());
 
     m_min_rtt_change = now;
 
-    return true;
+    return true; // Should enter PROBE_RTT.
   }
 
-  return false;
+  return false; // Should not enter PROBE_RTT.
 }
-  
 
+// Events/calculations specific to BBR' congestion state.
+// tcb = transmission control block
+void TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb,
+                        const TcpSocketState::TcpCongState_t new_state) {
+
+  NS_LOG_FUNCTION(this << tcb << new_state);
+  auto old_state = tcb->m_congState;
+  NS_LOG_LOGIC(this << " old_state: " <<
+              TcpSocketState::TcpCongStateName[old_state] <<
+              ", new_state: " <<
+              TcpSocketState::TcpCongStateName[new_state]);
+    
+  // Enter RTO --> minimal cwnd.
+  if (new_state == TcpSocketState::CA_LOSS) {
+    NS_LOG_LOGIC(this << " Entering RTO (CA_LOSS)");
+    m_prior_cwnd = m_cwnd;
+    m_cwnd = 1;
+    NS_LOG_LOGIC(this << " cwnd: " << m_cwnd);
+  }
+
+  // Enter Fast Recovery --> save cwnd.
+  // Modulate cwnd for 1 RTT.
+  if (new_state == TcpSocketState::CA_RECOVERY) {
+    NS_LOG_LOGIC(this << " Entering Fast Recovery (CA_RECOVERY)");
+    m_prior_cwnd = m_cwnd;
+    m_cwnd = m_bytes_in_flight + 1;
+    m_packet_conservation = Simulator::Now() + getRTT(); // Modulate for 1 RTT.
+    NS_LOG_LOGIC(this << " cwnd: " << m_cwnd <<
+                "  prior_cwnd: " << m_prior_cwnd <<
+                "  packet_cons: " << m_packet_conservation.GetSeconds());
+  }
+
+  // Exit RTO or Fast Recovery --> restore cwnd.
+  if ((old_state == TcpSocketState::CA_RECOVERY ||
+       old_state == TcpSocketState::CA_LOSS) &&
+      (new_state != TcpSocketState::CA_RECOVERY &&
+       new_state != TcpSocketState::CA_LOSS)) {
+    NS_LOG_LOGIC(this << " Exiting RTO/Fast Recovery (CA_LOSS/CA_RECOVERY)");
+    m_packet_conservation = Simulator::Now(); // Stop packet conservation.
+    if (m_prior_cwnd > m_cwnd)
+      m_cwnd = m_prior_cwnd;
+    NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
+                "  prior_cwnd: " << m_prior_cwnd);
+  }
+}
+
+// Compute target TCP cwnd (m_cwnd) based on BDP and gain.
+void TcpBbr::updateTargetCwnd() {
+
+  NS_LOG_FUNCTION(this);
+
+  double bdp = getBDP();
+  if (PACING_CONFIG == NO_PACING)
+    // If no pacing, cwnd is used to control pace.
+    m_cwnd = bdp * m_pacing_gain;
+  else
+    // If pacing, cwnd adjusted larger.
+    m_cwnd = bdp * m_cwnd_gain;
+  m_cwnd = (m_cwnd * 1000000 / 8); // Mbits to bytes.
+
+  // Make sure cwnd not too small (roughly, 4 packets).
+  if ((m_cwnd / 1500) < bbr::MIN_CWND) {
+    NS_LOG_LOGIC(this << "  Boosting cwnd to 4 x 1500B packets.");
+    m_cwnd = bbr::MIN_CWND * 1500; // In bytes.
+  }
+}

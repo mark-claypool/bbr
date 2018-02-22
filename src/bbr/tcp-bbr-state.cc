@@ -80,7 +80,7 @@ void BbrStateMachine::update() {
     return;
   }
 
-  NS_LOG_INFO(this << "  State: " << m_state -> GetName());
+  NS_LOG_LOGIC(this << "  State: " << m_state -> GetName());
 
   // Check if should enter PROBE_RTT.
   if (m_owner -> checkProbeRTT())
@@ -99,9 +99,9 @@ void BbrStateMachine::update() {
   Time rtt = m_owner -> getRTT();
   if (!rtt.IsNegative()) {
     Simulator::Schedule(rtt, &BbrStateMachine::update, this);
-    NS_LOG_INFO(this << "  Next event: " << rtt.GetSeconds());
+    NS_LOG_LOGIC(this << "  Next event: " << rtt.GetSeconds());
   } else // update() will be called in PktsAcked() upon getting first rtt.
-    NS_LOG_INFO(this << "  Not scheduling next event.");
+    NS_LOG_LOGIC(this << "  Not scheduling next event.");
 }
 
 // Change current state to new state.
@@ -109,11 +109,11 @@ void BbrStateMachine::changeState(BbrState *new_state) {
   NS_LOG_FUNCTION(this);
   NS_ASSERT(new_state != NULL);
   if (m_state)
-    NS_LOG_INFO(this <<
+    NS_LOG_LOGIC(this <<
 		"  Old: " << m_state -> GetName() <<
 		"  New: " << new_state -> GetName());
   else
-    NS_LOG_INFO(this << " Initial state: " << new_state -> GetName());
+    NS_LOG_LOGIC(this << " Initial state: " << new_state -> GetName());
 
   // Call exit on old state.
   if (m_state)
@@ -198,7 +198,6 @@ bbr::bbr_state BbrStartupState::getType(void) const {
 // Invoked when state first entered.
 void BbrStartupState::enter() {
   NS_LOG_FUNCTION(this);
-
   NS_LOG_INFO(this << " State: " << GetName());
 
   // Set gains to 2/ln(2).
@@ -209,20 +208,19 @@ void BbrStartupState::enter() {
 // Invoked when state updated.
 void BbrStartupState::execute() {
   NS_LOG_FUNCTION(this);
-
-  NS_LOG_INFO(this << " State: " << GetName());
+  NS_LOG_LOGIC(this << " State: " << GetName());
 
   double new_bw = m_owner -> getBW();
 
   // If no legitimate estimates yet, no more to do.
   if (new_bw < 0) {
-    NS_LOG_INFO(this << "  No BW estimates yet.");
+    NS_LOG_LOGIC(this << "  No BW estimates yet.");
     return;
   }
   
   // Still growing?
   if (new_bw > m_full_bw * bbr::STARTUP_THRESHOLD) { 
-    NS_LOG_INFO(this << "  Still growing. old_bw: " << m_full_bw << "  new_bw: " << new_bw);
+    NS_LOG_LOGIC(this << "  Still growing. old_bw: " << m_full_bw << "  new_bw: " << new_bw);
     m_full_bw = new_bw;
     m_full_bw_count = 0;
     return;
@@ -230,11 +228,11 @@ void BbrStartupState::execute() {
 
   // Another round w/o much growth.
   m_full_bw_count++;
-  NS_LOG_INFO(this << "  Growth stalled. old_bw: " << m_full_bw << "  new_bw: " << new_bw << "  full-bw-count: " << m_full_bw_count);
+  NS_LOG_LOGIC(this << "  Growth stalled. old_bw: " << m_full_bw << "  new_bw: " << new_bw << "  full-bw-count: " << m_full_bw_count);
   
   // If 3+ rounds w/out much growth, STARTUP --> DRAIN.
   if (m_full_bw_count > 2) {
-    NS_LOG_INFO(this << "  Exiting STARTUP, next state DRAIN");
+    NS_LOG_LOGIC(this << "  Exiting STARTUP, next state DRAIN");
     m_owner -> m_machine.changeState(&m_owner -> m_state_drain);
   }
 
@@ -301,10 +299,9 @@ void BbrDrainState::enter() {
 // Invoked when state updated.
 void BbrDrainState::execute() {
   NS_LOG_FUNCTION(this);
+  NS_LOG_LOGIC(this << " State: " << GetName());
 
-  NS_LOG_INFO(this << " State: " << GetName());
-
-  NS_LOG_INFO(this << " " <<
+  NS_LOG_LOGIC(this << " " <<
 	      GetName() <<
 	      "  round: " << m_round_count <<
 	      "  bytes_in_flight: " << m_owner -> m_bytes_in_flight <<
@@ -316,7 +313,7 @@ void BbrDrainState::execute() {
   m_round_count++;
   if (m_owner -> m_bytes_in_flight < m_inflight_limit ||
       m_round_count == 5) {
-    NS_LOG_INFO(this << " Exiting DRAIN, next state PROBE_BW");
+    NS_LOG_LOGIC(this << " Exiting DRAIN, next state PROBE_BW");
     m_owner -> m_machine.changeState(&m_owner -> m_state_probe_bw);
   }
 }
@@ -362,7 +359,7 @@ void BbrProbeBWState::enter() {
     m_gain_cycle = rand() % 8;
   } while (m_gain_cycle == 1);  // Phase 1 is "low" cycle.
 
-  NS_LOG_INFO(this << " " << GetName() << " Start cycle: " << m_gain_cycle);
+  NS_LOG_LOGIC(this << " " << GetName() << " Start cycle: " << m_gain_cycle);
 
   // Set gains based on phase.
   m_owner -> m_pacing_gain = bbr::STEADY_FACTOR;
@@ -377,8 +374,7 @@ void BbrProbeBWState::enter() {
 // Invoked when state updated.
 void BbrProbeBWState::execute() {
   NS_LOG_FUNCTION(this);
-
-  NS_LOG_INFO(this << " " << GetName() << "  m_gain_cycle: " << m_gain_cycle);
+  NS_LOG_LOGIC(this << " " << GetName() << "  m_gain_cycle: " << m_gain_cycle);
 
   // Set gain rate: [high, low, stdy, stdy, stdy, stdy, stdy, stdy]
   if (m_gain_cycle == 0)
@@ -403,7 +399,7 @@ void BbrProbeBWState::execute() {
   if (m_gain_cycle > 7)
     m_gain_cycle = 0;
 
-  NS_LOG_INFO(this << " " <<
+  NS_LOG_LOGIC(this << " " <<
 	      GetName() << " DATA pacing-gain: " << m_owner -> m_pacing_gain);
 }
 
@@ -440,7 +436,7 @@ bbr::bbr_state BbrProbeRTTState::getType(void) const {
 // Invoked when state first entered.
 void BbrProbeRTTState::enter() {
   NS_LOG_FUNCTION(this);
-  NS_LOG_INFO(this << " State: " << GetName());
+  NS_LOG_LOGIC(this << " State: " << GetName());
 
   // Set gains (Send() will minimize window);
   m_owner -> m_pacing_gain = bbr::STEADY_FACTOR;
@@ -454,20 +450,22 @@ void BbrProbeRTTState::enter() {
     m_probe_rtt_time = Time(0.2 * 1000000000);
   m_probe_rtt_time = m_probe_rtt_time + Simulator::Now();
     
-  NS_LOG_INFO(this << " " <<
+  NS_LOG_LOGIC(this << " " <<
 	      GetName() << " In PROBE_RTT until: " << m_probe_rtt_time.GetSeconds());
 }
 
 // Invoked when state updated.
 void BbrProbeRTTState::execute() {
   NS_LOG_FUNCTION(this);
+  NS_LOG_LOGIC(this << " State: " << GetName());
 
-  NS_LOG_INFO(this << " State: " << GetName());
+  // Cwnd target is minimum.
+  m_owner -> m_cwnd = bbr::MIN_CWND * 1500; // In bytes.
 
   // If enough time elapsed, PROBE_RTT --> PROBE_BW.
   Time now = Simulator::Now();
   if (now > m_probe_rtt_time) {
-      NS_LOG_INFO(this << " Exiting PROBE_RTT, next state PROBE_BW");
+      NS_LOG_LOGIC(this << " Exiting PROBE_RTT, next state PROBE_BW");
       m_owner -> m_machine.changeState(&m_owner -> m_state_probe_bw);
   }
 }

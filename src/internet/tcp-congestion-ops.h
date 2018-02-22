@@ -122,8 +122,10 @@ public:
   {
   }
 
-  // Added for BBR' support.
-  virtual void Send (Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb)
+  // Enable congestion control-specific Send() functionality
+  // (invoked in TcpSocketBase::SendDataPacketReal()).
+  virtual void Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb,
+                    SequenceNumber32 seq, bool isRetrans)
   {
   }
 
@@ -194,9 +196,6 @@ public:
 
   virtual Ptr<TcpCongestionOps> Fork ();
 
-  // MLC added for logging.
-  virtual void PktsAcked (Ptr<TcpSocketState> tcb, uint32_t packetsAcked,
-                          const Time& rtt);
 protected:
   virtual uint32_t SlowStart (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked);
   virtual void CongestionAvoidance (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked);

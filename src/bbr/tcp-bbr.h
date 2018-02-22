@@ -41,7 +41,7 @@ const enum_time_config TIME_CONFIG = PACKET_TIME;
 ///////////////////////////////////////////////////////////////////
 
 // Constants.
-const float VERSION = 1.5;            // See changelog.txt.
+const float VERSION = 1.6;            // See changelog.txt.
 const Time INIT_RTT = Time(1000000);  // Nanoseconds (.001 sec).
 const double INIT_BW = 6.0;           // Mb/s. 
 const int RTT_WINDOW_TIME = 10;       // In seconds.
@@ -58,6 +58,9 @@ const float DRAIN_FACTOR = 0.25;      // Decrease when drain.
 // STARTUP state:
 const float STARTUP_THRESHOLD = 1.25; // Threshold to exit STARTUP.
 const float STARTUP_GAIN = 2.89;      // Roughly 2/ln(2).
+
+// To enter PROBE_RTT state:
+const float RTT_NOCHANGE_LIMIT = 10;  // In seconds.
 
 // Structure for tracking TCP window for estimating BW.
 struct packet_struct {
@@ -110,12 +113,15 @@ public:
   virtual ~TcpBbr();
 
   // Before sending packet:
-  // - Update TCP window
   // - Record information to estimate BW
-  virtual void Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb);
+  virtual void Send(Ptr<TcpSocketBase> tsb, Ptr<TcpSocketState> tcb,
+                    SequenceNumber32 seq, bool isRetrans);
 
-  // On receiving ack, store RTT and estimated BW.
-  // Compute and set pacing rate.
+  // On receiving ack:
+  // - update congestion window
+  // - store RTT
+  // - compute and store estimated BW
+  // - compute and set pacing rate
   virtual void PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
                          const Time &rtt);
 
@@ -128,11 +134,12 @@ public:
   // BBR' does not use ssthresh, so ignored.
   virtual uint32_t GetSsThresh(Ptr<const TcpSocketState> tcb, uint32_t b_in_flight);
 
+  // Events/calculations specific to BBR' congestion state.
+  // tcb = transmission control block
+  virtual void CongestionStateSet(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCongState_t new_state);
+
 private:
   
-  // Check if should enter PROBE_RTT state.
-  bool checkProbeRTT();
-
   // Return bandwidth-delay product (in Mbits).
   double getBDP() const;
 
@@ -150,7 +157,13 @@ private:
   // Remove RTT estimates that are too old (greater than 10 seconds).
   void cullRTTwindow();
 
-protected:
+  // Compute target TCP cwnd (m_cwnd) based on BDP and gain.
+  void updateTargetCwnd();
+
+  // Check if should enter PROBE_RTT state.
+  bool checkProbeRTT();
+
+ protected:
   double m_pacing_gain;                    // Scale estimated BDP for pacing.
   double m_cwnd_gain;                      // Scale estimated BDP for cwnd.
   int m_round;                             // For recording virtual RTT time.
@@ -161,6 +174,11 @@ protected:
   std::vector<bbr::packet_struct> m_pkt_window; // For estimating BW from ACKs.
   uint32_t m_bytes_in_flight;              // Bytes in flight (from socket base).
   Time m_min_rtt_change;                   // Last time min RTT changed.
+  double m_cwnd;                           // Current taraget/max cwnd.
+  double m_prior_cwnd;                     // Cwnd prior to Fast Recovery.
+  Time m_packet_conservation;              // Time to stop modulation.
+  bool m_in_retrans_seq;                   // True if in retrans seq.
+  SequenceNumber32 m_retrans_seq;          // Retrans seq end.
   BbrStateMachine m_machine;               // State machine.
   BbrStartupState m_state_startup;         // STARTUP state.
   BbrDrainState m_state_drain;             // DRAIN state.
