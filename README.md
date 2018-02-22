@@ -224,11 +224,10 @@ Control](https://goo.gl/PLN3fA), *Communications of the ACM*, 60(2),
 February 2017.
 
 [<a name="ccl18">CCL18</a>] M. Claypool, J.W. Chung, and F. Li.
-[BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
-Congestion Control for
-ns-3](ftp://ftp.cs.wpi.edu/pub/techreports/pdf/18-01.pdf), Technical
-Report WPI-CS-TR-18-01, Computer Science, Worcester Polytechnic
-Institute, January 2018.
+"BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
+Congestion Control for ns-3", Technical Report WPI-CS-TR-18-01,
+Computer Science, Worcester Polytechnic Institute, January 2018.
+Online: ftp://ftp.cs.wpi.edu/pub/techreports/pdf/18-01.pdf
 
 [<a name="ccyj17">CCYJ17</a>] N. Cardwell, Y. Cheng, S. H. Yeganeh,
 and V. Jacobson.  [BBR Congestion Control](https://goo.gl/dxV24D),
