@@ -3,7 +3,7 @@ README
 
 BBR' source files.
 
-See main (../README.md)[../README.md] for use.
+See main [../README.md](../README.md) for use.
 
 ## Directories
 
