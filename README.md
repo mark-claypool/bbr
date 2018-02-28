@@ -90,12 +90,14 @@ to Repository](#link).
 
     ln -sf REPO/src/internet/*.h .
 
-    (If using APP_PACING config, do below)
+(If using APP_PACING config, do below):
 
     cd ROOT/ns-3.27/src/applications/model
 
     ln -sf REPO/src/applications/*.cc .
-	
+
+    ln -sf REPO/src/applications/*.h .
+
 4) Edit script file to build BBR':
 
     edit ROOT/ns-3.27/src/internet/wscript
