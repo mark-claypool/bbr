@@ -1931,7 +1931,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-congestion-ops.h ns-a
     *
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc	2017-10-11 16:39:00.000000000 -0400
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc	2018-02-22 15:44:36.411181802 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc	2018-03-01 06:34:07.996666667 -0500
 @@ -250,7 +250,8 @@ TcpSocketState::TcpSocketState (void)
      // Change m_nextTxSequence for non-zero initial sequence number
      m_nextTxSequence (0),
@@ -2131,7 +2131,20 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
    return bytesInFlight;
  }
  
-@@ -3947,4 +4068,44 @@ RttHistory::RttHistory (const RttHistory
+@@ -3287,6 +3408,12 @@ TcpSocketBase::ReTxTimeout ()
+   m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_LOSS);
+   m_tcb->m_congState = TcpSocketState::CA_LOSS;
+ 
++  // Clear any remaining packets in pacing queue.
++  NS_LOG_DEBUG("RTO. Clearing pacing queue, packet count: "
++               << m_pacing_packets.size());
++  while (!m_pacing_packets.empty())
++    m_pacing_packets.pop();
++  
+   NS_LOG_DEBUG ("RTO. Reset cwnd to " <<  m_tcb->m_cWnd << ", ssthresh to " <<
+                 m_tcb->m_ssThresh << ", restart from seqnum " <<
+                 m_txBuffer->HeadSequence () << " doubled rto to " <<
+@@ -3947,4 +4074,44 @@ RttHistory::RttHistory (const RttHistory
  {
  }
  
@@ -2178,8 +2191,8 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
  } // namespace ns3
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h	2017-10-11 16:39:00.000000000 -0400
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h	2018-02-22 15:44:33.031173151 -0500
-@@ -21,6 +21,23 @@
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h	2018-03-01 06:34:04.720658426 -0500
+@@ -21,6 +21,25 @@
  #ifndef TCP_SOCKET_BASE_H
  #define TCP_SOCKET_BASE_H
  
@@ -2197,37 +2210,42 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-alli
 +//const enum_pacing_config PACING_CONFIG = NO_PACING;
 +//const enum_pacing_config PACING_CONFIG = APP_PACING;
 +
++const float PACING_VERSION = 1.1;  // See changelog.txt.
++
 +// ADDITIONS FOR PACING: END
 +///////////////////////////////////////////////////////////////////
 +
  #include <stdint.h>
  #include <queue>
  #include "ns3/callback.h"
-@@ -186,8 +203,23 @@ public:
+@@ -186,7 +205,26 @@ public:
    {
      return m_ssThresh / m_segmentSize;
    }
 +
 +  //////////////////////////////
-+  // Additions for pacing.
++  // ADDITIONS FOR PACING: START
++
 +  void SetPacingRate (double pacing_rate);
 +  double GetPacingRate () const;
 +protected:
 +  double            m_pacing_rate;                 // Pacing rate (in Mb/s).
-+  //////////////////////////////
- };
- 
++
++};
++
 +// Structure for tracking packets to send for pacing in TCP.
 +struct tcp_pacing_struct {
 +  SequenceNumber32 seq;    // Seq location in TCP buffer.
 +  uint32_t maxSize;        // Bytes to extract.
 +  bool withAck;            // Include ack or not.
-+};
+ };
 +  
++// ADDITIONS FOR PACING: END
++//////////////////////////////
+ 
  /**
   * \ingroup socket
-  * \ingroup tcp
-@@ -654,6 +686,7 @@ protected:
+@@ -654,6 +692,7 @@ protected:
     * \returns the number of bytes sent
     */
    uint32_t SendDataPacket (SequenceNumber32 seq, uint32_t maxSize, bool withAck);
@@ -2235,7 +2253,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-alli
  
    /**
     * \brief Send a empty packet that carries a flag, e.g., ACK
-@@ -812,6 +845,7 @@ protected:
+@@ -812,6 +851,7 @@ protected:
     */
    virtual uint32_t UnAckDataCount (void) const;
  
@@ -2243,7 +2261,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-alli
    /**
     * \brief Return total bytes in flight
     *
-@@ -821,6 +855,7 @@ protected:
+@@ -821,6 +861,7 @@ protected:
     */
    virtual uint32_t BytesInFlight (void) const;
  
@@ -2251,7 +2269,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-alli
    /**
     * \brief Return the max possible number of unacked bytes
     * \returns the max possible number of unacked bytes
-@@ -1071,6 +1106,21 @@ protected:
+@@ -1071,6 +1112,21 @@ protected:
     */
    static uint32_t SafeSubtraction (uint32_t a, uint32_t b);
  

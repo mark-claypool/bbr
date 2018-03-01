@@ -35,6 +35,8 @@ const enum_pacing_config PACING_CONFIG = TCP_PACING;
 //const enum_pacing_config PACING_CONFIG = NO_PACING;
 //const enum_pacing_config PACING_CONFIG = APP_PACING;
 
+const float PACING_VERSION = 1.1;  // See changelog.txt.
+
 // ADDITIONS FOR PACING: END
 ///////////////////////////////////////////////////////////////////
 
@@ -205,12 +207,13 @@ public:
   }
 
   //////////////////////////////
-  // Additions for pacing.
+  // ADDITIONS FOR PACING: START
+
   void SetPacingRate (double pacing_rate);
   double GetPacingRate () const;
 protected:
   double            m_pacing_rate;                 // Pacing rate (in Mb/s).
-  //////////////////////////////
+
 };
 
 // Structure for tracking packets to send for pacing in TCP.
@@ -220,6 +223,9 @@ struct tcp_pacing_struct {
   bool withAck;            // Include ack or not.
 };
   
+// ADDITIONS FOR PACING: END
+//////////////////////////////
+
 /**
  * \ingroup socket
  * \ingroup tcp

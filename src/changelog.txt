@@ -1,4 +1,6 @@
-# BBR' Changelog
+# Changelog
+
+## BBR' (in tcp-bbr.h)
 
 v1.6 - Updated cwnd response to packet loss (RTO and Fast Recovery).
        Changed BW estimates to ignore retransmission sequences.
@@ -19,3 +21,12 @@ v1.2 - Re-factored state code to use FSM for BBR states.
 v1.1 - Added PROBE_RTT state.
 
 v1.0 - Initial version.
+
+
+## TCP Pacing (in tcp-socket-base.h)
+
+v1.1 - Fixed bug in TcpSocketBase to clear any remaining packets
+       in pacing queue when RTO.
+
+v1.0 - Initial split with version numbers for TCP pacing and BBR'.
+

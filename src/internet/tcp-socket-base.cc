@@ -3408,6 +3408,12 @@ TcpSocketBase::ReTxTimeout ()
   m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_LOSS);
   m_tcb->m_congState = TcpSocketState::CA_LOSS;
 
+  // Clear any remaining packets in pacing queue.
+  NS_LOG_DEBUG("RTO. Clearing pacing queue, packet count: "
+               << m_pacing_packets.size());
+  while (!m_pacing_packets.empty())
+    m_pacing_packets.pop();
+  
   NS_LOG_DEBUG ("RTO. Reset cwnd to " <<  m_tcb->m_cWnd << ", ssthresh to " <<
                 m_tcb->m_ssThresh << ", restart from seqnum " <<
                 m_txBuffer->HeadSequence () << " doubled rto to " <<
