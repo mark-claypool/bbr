@@ -3096,10 +3096,11 @@ TcpSocketBase::BytesInFlight () const
   auto pacing_bytes = pacingQueueBytes();
   int adj_bytes = bytesInFlight - pacing_bytes;
 
-  NS_LOG_LOGIC (this << " DATA Pacing queue pkts: " << m_pacing_packets.size() << 
-                "  bytes: " << pacing_bytes << 
-                "  inflight: " << bytesInFlight << 
-                "  inflight adjusted: " << adj_bytes);
+  NS_LOG_INFO(this <<
+              " DATA Pacing queue pkts: " << m_pacing_packets.size() << 
+              "  bytes: " << pacing_bytes << 
+              "  inflight: " << bytesInFlight << 
+              "  inflight adjusted: " << adj_bytes);
 
   return bytesInFlight;
 }

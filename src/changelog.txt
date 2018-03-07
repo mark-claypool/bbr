@@ -2,6 +2,11 @@
 
 ## BBR' (in tcp-bbr.h)
 
+v1.7 - Added PROBE_RTT_MIN_TIME as a constant for easier adjustments.
+       Changed bbr::MIN_CWND to be in units of bytes for clarity.
+       Modified PROBE_RTT so controls pacing rate in Send() since
+          TCP_PACING may have backlogged packets.
+
 v1.6 - Updated cwnd response to packet loss (RTO and Fast Recovery).
        Changed BW estimates to ignore retransmission sequences.
        Moved most NS_LOG messages from INFO to LOGIC.

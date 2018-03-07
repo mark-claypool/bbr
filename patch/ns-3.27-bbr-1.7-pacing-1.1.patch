@@ -405,8 +405,8 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/applications/model/bulk-send-application
  } // namespace ns3
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc	1969-12-31 19:00:00.000000000 -0500
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc	2018-02-22 15:44:24.463151220 -0500
-@@ -0,0 +1,618 @@
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.cc	2018-03-07 16:06:21.504847942 -0500
+@@ -0,0 +1,646 @@
 +/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 +/*
 + * Copyright (c) 2017 WPI, Verizon
@@ -472,7 +472,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +  NS_LOG_INFO(this << "  INIT_RTT: " << bbr::INIT_RTT.GetSeconds() << " sec");
 +  NS_LOG_INFO(this << "  INIT_BW: " << bbr::INIT_BW << " Mb/s");
 +  NS_LOG_INFO(this << "  BW_WINDOW_TIME: " << bbr::BW_WINDOW_TIME << " rtts");
-+  NS_LOG_INFO(this << "  MIN_CWND: " << bbr::MIN_CWND << " packets");
++  NS_LOG_INFO(this << "  MIN_CWND: " << bbr::MIN_CWND << " bytes");
 +  NS_LOG_INFO(this << "  STARTUP_THRESHOLD: " << bbr::STARTUP_THRESHOLD);
 +  NS_LOG_INFO(this << "  STARTUP_GAIN: " << bbr::STARTUP_GAIN);
 +  NS_LOG_INFO(this << "  STEADY_FACTOR: " << bbr::STEADY_FACTOR);
@@ -586,7 +586,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +    if (m_packet_conservation > Simulator::Now()) {
 +      NS_LOG_LOGIC(this << "  Modulating cwnd until: " <<
 +                  m_packet_conservation.GetSeconds());
-+      NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
++      NS_LOG_LOGIC(this << "  m_cwnd: " << m_cwnd <<
 +                  "  bytes_in_flight: " << m_bytes_in_flight <<
 +                  "  bytes_delivered: " << bytes_delivered);
 +      if ((m_bytes_in_flight + bytes_delivered) > m_cwnd)
@@ -603,7 +603,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +    tcb -> m_cWnd = tcb -> m_cWnd + bytes_delivered;
 +  } else
 +    // If shrinking cwnd, adjust immediately.
-+    tcb -> m_cWnd = m_cwnd;
++    tcb -> m_cWnd = (uint32_t) m_cwnd;
 +
 +  ////////////////////////////////////////////
 +  // STORE RTT
@@ -726,15 +726,35 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +  // Set pacing rate (in Mb/s), adjusted by gain.
 +  double pacing_rate = getBW() * m_pacing_gain;
 +
-+  // There may be some advantages to pacing at just under the BW.
-+  // Either way, this is adjustable in the header file.
++  // There may be some advantages to pacing at just under BW.
++  // Either way, this is adjustable in header file.
 +  if (m_pacing_gain == 1)
 +    pacing_rate *= bbr::PACING_FACTOR;
 +  
 +  if (pacing_rate < 0)
 +    pacing_rate = 0.0;
-+  if (PACING_CONFIG != NO_PACING)
++
++  if (PACING_CONFIG != NO_PACING) {
++
++    // If in PROBE_RTT, minimize pacing rate since TCP pacing
++    // might have built-up queue.
++    if (m_machine.getStateType() == bbr::PROBE_RTT_STATE) {
++      double probe_rtt_pacing_rate = bbr::MIN_CWND;   // Bytes (B).
++      probe_rtt_pacing_rate /=  min_rtt.GetSeconds(); // B/s.
++      probe_rtt_pacing_rate *= 8;                     // Convert to b/s.
++      probe_rtt_pacing_rate /= 1000000;               // Convert to Mb/s.
++      NS_LOG_LOGIC(this << " In PROBE_RTT," <<
++                   "  bbr::MIN_CWND: " << bbr::MIN_CWND <<
++                   "  min_rtt: " << min_rtt.GetSeconds() << 
++                   "  pacing rate: " << pacing_rate << 
++                   "  probe_rtt pacing rate: " << probe_rtt_pacing_rate);
++      if (probe_rtt_pacing_rate < pacing_rate)
++        pacing_rate = probe_rtt_pacing_rate;
++    }
++    
++    // Set rate.
 +    tcb -> SetPacingRate(pacing_rate);
++  }
 +
 +  ////////////////////////////////////////////
 +  // Report data.
@@ -750,7 +770,9 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +  NS_LOG_INFO(this << "  DATA rtt: " << rtt.GetSeconds() << "  " <<
 +              "pacing-gain " << m_pacing_gain <<  "  " <<
 +              "pacing-rate " << pacing_rate << " Mb/s  " <<
-+              "bw: " << bw_est << " Mb/s");
++              "bw: " << bw_est << " Mb/s  " <<
++              "m_cwnd: " << m_cwnd << " bytes  " <<
++              "tcb->m_cWnd: " << tcb->m_cWnd);
 +}
 +
 +// Before sending packet:
@@ -975,7 +997,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +  if (new_state == TcpSocketState::CA_LOSS) {
 +    NS_LOG_LOGIC(this << " Entering RTO (CA_LOSS)");
 +    m_prior_cwnd = m_cwnd;
-+    m_cwnd = 1;
++    m_cwnd = 1000; // bytes
 +    NS_LOG_LOGIC(this << " cwnd: " << m_cwnd);
 +  }
 +
@@ -986,7 +1008,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +    m_prior_cwnd = m_cwnd;
 +    m_cwnd = m_bytes_in_flight + 1;
 +    m_packet_conservation = Simulator::Now() + getRTT(); // Modulate for 1 RTT.
-+    NS_LOG_LOGIC(this << " cwnd: " << m_cwnd <<
++    NS_LOG_LOGIC(this << " m_cwnd: " << m_cwnd <<
 +                "  prior_cwnd: " << m_prior_cwnd <<
 +                "  packet_cons: " << m_packet_conservation.GetSeconds());
 +  }
@@ -1000,7 +1022,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +    m_packet_conservation = Simulator::Now(); // Stop packet conservation.
 +    if (m_prior_cwnd > m_cwnd)
 +      m_cwnd = m_prior_cwnd;
-+    NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
++    NS_LOG_LOGIC(this << "  m_cwnd: " << m_cwnd <<
 +                "  prior_cwnd: " << m_prior_cwnd);
 +  }
 +}
@@ -1020,15 +1042,21 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.cc ns-allinone-3.
 +  m_cwnd = (m_cwnd * 1000000 / 8); // Mbits to bytes.
 +
 +  // Make sure cwnd not too small (roughly, 4 packets).
-+  if ((m_cwnd / 1500) < bbr::MIN_CWND) {
-+    NS_LOG_LOGIC(this << "  Boosting cwnd to 4 x 1500B packets.");
-+    m_cwnd = bbr::MIN_CWND * 1500; // In bytes.
++  if (m_cwnd < bbr::MIN_CWND) {
++    NS_LOG_LOGIC(this << "  m_cwnd (bytes): " << m_cwnd <<
++                 "  Boosting to (bytes): " << bbr::MIN_CWND);
++    m_cwnd = bbr::MIN_CWND; // In bytes.
 +  }
++
++  // Log info.
++  NS_LOG_INFO(this << "  DATA bdp (Mbits): " << bdp <<
++              "  bdp (bytes): " << bdp * 1000000 / 8 <<
++              "  m_cwnd (bytes): " << m_cwnd);
 +}
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.h ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.h
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.h	1969-12-31 19:00:00.000000000 -0500
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.h	2018-02-22 15:44:26.751157078 -0500
-@@ -0,0 +1,191 @@
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr.h	2018-03-07 16:06:23.128852295 -0500
+@@ -0,0 +1,192 @@
 +/* -*- Mode:C++; c-file-style:"gnu"; indent-tabs-mode:nil; -*- */
 +/*
 + * Copyright (c) 2017 WPI, Verizon
@@ -1072,12 +1100,12 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.h ns-allinone-3.2
 +///////////////////////////////////////////////////////////////////
 +
 +// Constants.
-+const float VERSION = 1.6;            // See changelog.txt.
++const float VERSION = 1.7;            // See changelog.txt.
 +const Time INIT_RTT = Time(1000000);  // Nanoseconds (.001 sec).
 +const double INIT_BW = 6.0;           // Mb/s. 
 +const int RTT_WINDOW_TIME = 10;       // In seconds.
 +const int BW_WINDOW_TIME = 10;        // In RTTs.
-+const int MIN_CWND = 4;               // In packets.
++const int MIN_CWND = 4 * 1000;        // In bytes.
 +const float PACING_FACTOR = 0.95;     // Factor of BW to pace (for tuning).
 +  
 +// PROBE_BW state:
@@ -1090,8 +1118,9 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.h ns-allinone-3.2
 +const float STARTUP_THRESHOLD = 1.25; // Threshold to exit STARTUP.
 +const float STARTUP_GAIN = 2.89;      // Roughly 2/ln(2).
 +
-+// To enter PROBE_RTT state:
-+const float RTT_NOCHANGE_LIMIT = 10;  // In seconds.
++// PROBE_RTT state:
++const float RTT_NOCHANGE_LIMIT = 10;  // To enter (in seconds).
++const float PROBE_RTT_MIN_TIME = 0.2; // Minimun stay time (in seconds).
 +
 +// Structure for tracking TCP window for estimating BW.
 +struct packet_struct {
@@ -1222,7 +1251,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr.h ns-allinone-3.2
 +#endif // TCP_BBR_H
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.cc ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.cc
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.cc	1969-12-31 19:00:00.000000000 -0500
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.cc	2018-02-22 15:44:24.495151303 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.cc	2018-03-07 16:06:21.576848135 -0500
 @@ -0,0 +1,471 @@
 +//
 +// BbrState.cpp
@@ -1697,7 +1726,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.cc ns-allin
 +}
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.h ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.h
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.h	1969-12-31 19:00:00.000000000 -0500
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.h	2018-02-22 15:44:26.763157108 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-bbr-state.h	2018-03-07 16:06:23.192852466 -0500
 @@ -0,0 +1,213 @@
 +//
 +// BbrState.h
@@ -1914,7 +1943,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-bbr-state.h ns-allino
 +#endif
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-congestion-ops.h ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-congestion-ops.h
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-congestion-ops.h	2017-10-11 16:39:00.000000000 -0400
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-congestion-ops.h	2018-02-22 15:44:33.003173078 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-congestion-ops.h	2018-03-07 16:06:28.844867614 -0500
 @@ -122,6 +122,13 @@ public:
    {
    }
@@ -1931,7 +1960,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-congestion-ops.h ns-a
     *
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc	2017-10-11 16:39:00.000000000 -0400
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc	2018-03-01 06:34:07.996666667 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.cc	2018-03-07 16:06:30.864873028 -0500
 @@ -250,7 +250,8 @@ TcpSocketState::TcpSocketState (void)
      // Change m_nextTxSequence for non-zero initial sequence number
      m_nextTxSequence (0),
@@ -2114,7 +2143,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
    return sz;
  }
  
-@@ -2980,6 +3091,16 @@ TcpSocketBase::BytesInFlight () const
+@@ -2980,6 +3091,17 @@ TcpSocketBase::BytesInFlight () const
      }
  
    NS_LOG_DEBUG ("Returning calculated bytesInFlight: " << bytesInFlight);
@@ -2123,15 +2152,16 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
 +  auto pacing_bytes = pacingQueueBytes();
 +  int adj_bytes = bytesInFlight - pacing_bytes;
 +
-+  NS_LOG_LOGIC (this << " DATA Pacing queue pkts: " << m_pacing_packets.size() << 
-+                "  bytes: " << pacing_bytes << 
-+                "  inflight: " << bytesInFlight << 
-+                "  inflight adjusted: " << adj_bytes);
++  NS_LOG_INFO(this <<
++              " DATA Pacing queue pkts: " << m_pacing_packets.size() << 
++              "  bytes: " << pacing_bytes << 
++              "  inflight: " << bytesInFlight << 
++              "  inflight adjusted: " << adj_bytes);
 +
    return bytesInFlight;
  }
  
-@@ -3287,6 +3408,12 @@ TcpSocketBase::ReTxTimeout ()
+@@ -3287,6 +3409,12 @@ TcpSocketBase::ReTxTimeout ()
    m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_LOSS);
    m_tcb->m_congState = TcpSocketState::CA_LOSS;
  
@@ -2144,7 +2174,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
    NS_LOG_DEBUG ("RTO. Reset cwnd to " <<  m_tcb->m_cWnd << ", ssthresh to " <<
                  m_tcb->m_ssThresh << ", restart from seqnum " <<
                  m_txBuffer->HeadSequence () << " doubled rto to " <<
-@@ -3947,4 +4074,44 @@ RttHistory::RttHistory (const RttHistory
+@@ -3947,4 +4075,44 @@ RttHistory::RttHistory (const RttHistory
  {
  }
  
@@ -2191,7 +2221,7 @@ diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.cc ns-all
  } // namespace ns3
 diff -rupN ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h
 --- ns-allinone-3.27/ns-3.27/src/internet/model/tcp-socket-base.h	2017-10-11 16:39:00.000000000 -0400
-+++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h	2018-03-01 06:34:04.720658426 -0500
++++ ns-allinone-3.27-bbr/ns-3.27/src/internet/model/tcp-socket-base.h	2018-03-07 16:06:28.968867945 -0500
 @@ -21,6 +21,25 @@
  #ifndef TCP_SOCKET_BASE_H
  #define TCP_SOCKET_BASE_H

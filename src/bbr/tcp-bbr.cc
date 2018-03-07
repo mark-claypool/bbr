@@ -63,7 +63,7 @@ TcpBbr::TcpBbr(void) :
   NS_LOG_INFO(this << "  INIT_RTT: " << bbr::INIT_RTT.GetSeconds() << " sec");
   NS_LOG_INFO(this << "  INIT_BW: " << bbr::INIT_BW << " Mb/s");
   NS_LOG_INFO(this << "  BW_WINDOW_TIME: " << bbr::BW_WINDOW_TIME << " rtts");
-  NS_LOG_INFO(this << "  MIN_CWND: " << bbr::MIN_CWND << " packets");
+  NS_LOG_INFO(this << "  MIN_CWND: " << bbr::MIN_CWND << " bytes");
   NS_LOG_INFO(this << "  STARTUP_THRESHOLD: " << bbr::STARTUP_THRESHOLD);
   NS_LOG_INFO(this << "  STARTUP_GAIN: " << bbr::STARTUP_GAIN);
   NS_LOG_INFO(this << "  STEADY_FACTOR: " << bbr::STEADY_FACTOR);
@@ -177,7 +177,7 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
     if (m_packet_conservation > Simulator::Now()) {
       NS_LOG_LOGIC(this << "  Modulating cwnd until: " <<
                   m_packet_conservation.GetSeconds());
-      NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
+      NS_LOG_LOGIC(this << "  m_cwnd: " << m_cwnd <<
                   "  bytes_in_flight: " << m_bytes_in_flight <<
                   "  bytes_delivered: " << bytes_delivered);
       if ((m_bytes_in_flight + bytes_delivered) > m_cwnd)
@@ -194,7 +194,7 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
     tcb -> m_cWnd = tcb -> m_cWnd + bytes_delivered;
   } else
     // If shrinking cwnd, adjust immediately.
-    tcb -> m_cWnd = m_cwnd;
+    tcb -> m_cWnd = (uint32_t) m_cwnd;
 
   ////////////////////////////////////////////
   // STORE RTT
@@ -317,15 +317,35 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   // Set pacing rate (in Mb/s), adjusted by gain.
   double pacing_rate = getBW() * m_pacing_gain;
 
-  // There may be some advantages to pacing at just under the BW.
-  // Either way, this is adjustable in the header file.
+  // There may be some advantages to pacing at just under BW.
+  // Either way, this is adjustable in header file.
   if (m_pacing_gain == 1)
     pacing_rate *= bbr::PACING_FACTOR;
   
   if (pacing_rate < 0)
     pacing_rate = 0.0;
-  if (PACING_CONFIG != NO_PACING)
+
+  if (PACING_CONFIG != NO_PACING) {
+
+    // If in PROBE_RTT, minimize pacing rate since TCP pacing
+    // might have built-up queue.
+    if (m_machine.getStateType() == bbr::PROBE_RTT_STATE) {
+      double probe_rtt_pacing_rate = bbr::MIN_CWND;   // Bytes (B).
+      probe_rtt_pacing_rate /=  min_rtt.GetSeconds(); // B/s.
+      probe_rtt_pacing_rate *= 8;                     // Convert to b/s.
+      probe_rtt_pacing_rate /= 1000000;               // Convert to Mb/s.
+      NS_LOG_LOGIC(this << " In PROBE_RTT," <<
+                   "  bbr::MIN_CWND: " << bbr::MIN_CWND <<
+                   "  min_rtt: " << min_rtt.GetSeconds() << 
+                   "  pacing rate: " << pacing_rate << 
+                   "  probe_rtt pacing rate: " << probe_rtt_pacing_rate);
+      if (probe_rtt_pacing_rate < pacing_rate)
+        pacing_rate = probe_rtt_pacing_rate;
+    }
+    
+    // Set rate.
     tcb -> SetPacingRate(pacing_rate);
+  }
 
   ////////////////////////////////////////////
   // Report data.
@@ -341,7 +361,9 @@ void TcpBbr::PktsAcked(Ptr<TcpSocketState> tcb, uint32_t packets_acked,
   NS_LOG_INFO(this << "  DATA rtt: " << rtt.GetSeconds() << "  " <<
               "pacing-gain " << m_pacing_gain <<  "  " <<
               "pacing-rate " << pacing_rate << " Mb/s  " <<
-              "bw: " << bw_est << " Mb/s");
+              "bw: " << bw_est << " Mb/s  " <<
+              "m_cwnd: " << m_cwnd << " bytes  " <<
+              "tcb->m_cWnd: " << tcb->m_cWnd);
 }
 
 // Before sending packet:
@@ -566,7 +588,7 @@ void TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb,
   if (new_state == TcpSocketState::CA_LOSS) {
     NS_LOG_LOGIC(this << " Entering RTO (CA_LOSS)");
     m_prior_cwnd = m_cwnd;
-    m_cwnd = 1;
+    m_cwnd = 1000; // bytes
     NS_LOG_LOGIC(this << " cwnd: " << m_cwnd);
   }
 
@@ -577,7 +599,7 @@ void TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb,
     m_prior_cwnd = m_cwnd;
     m_cwnd = m_bytes_in_flight + 1;
     m_packet_conservation = Simulator::Now() + getRTT(); // Modulate for 1 RTT.
-    NS_LOG_LOGIC(this << " cwnd: " << m_cwnd <<
+    NS_LOG_LOGIC(this << " m_cwnd: " << m_cwnd <<
                 "  prior_cwnd: " << m_prior_cwnd <<
                 "  packet_cons: " << m_packet_conservation.GetSeconds());
   }
@@ -591,7 +613,7 @@ void TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb,
     m_packet_conservation = Simulator::Now(); // Stop packet conservation.
     if (m_prior_cwnd > m_cwnd)
       m_cwnd = m_prior_cwnd;
-    NS_LOG_LOGIC(this << "  cwnd: " << m_cwnd <<
+    NS_LOG_LOGIC(this << "  m_cwnd: " << m_cwnd <<
                 "  prior_cwnd: " << m_prior_cwnd);
   }
 }
@@ -611,8 +633,14 @@ void TcpBbr::updateTargetCwnd() {
   m_cwnd = (m_cwnd * 1000000 / 8); // Mbits to bytes.
 
   // Make sure cwnd not too small (roughly, 4 packets).
-  if ((m_cwnd / 1500) < bbr::MIN_CWND) {
-    NS_LOG_LOGIC(this << "  Boosting cwnd to 4 x 1500B packets.");
-    m_cwnd = bbr::MIN_CWND * 1500; // In bytes.
+  if (m_cwnd < bbr::MIN_CWND) {
+    NS_LOG_LOGIC(this << "  m_cwnd (bytes): " << m_cwnd <<
+                 "  Boosting to (bytes): " << bbr::MIN_CWND);
+    m_cwnd = bbr::MIN_CWND; // In bytes.
   }
+
+  // Log info.
+  NS_LOG_INFO(this << "  DATA bdp (Mbits): " << bdp <<
+              "  bdp (bytes): " << bdp * 1000000 / 8 <<
+              "  m_cwnd (bytes): " << m_cwnd);
 }

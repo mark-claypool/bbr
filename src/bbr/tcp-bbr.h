@@ -41,12 +41,12 @@ const enum_time_config TIME_CONFIG = PACKET_TIME;
 ///////////////////////////////////////////////////////////////////
 
 // Constants.
-const float VERSION = 1.6;            // See changelog.txt.
+const float VERSION = 1.7;            // See changelog.txt.
 const Time INIT_RTT = Time(1000000);  // Nanoseconds (.001 sec).
 const double INIT_BW = 6.0;           // Mb/s. 
 const int RTT_WINDOW_TIME = 10;       // In seconds.
 const int BW_WINDOW_TIME = 10;        // In RTTs.
-const int MIN_CWND = 4;               // In packets.
+const int MIN_CWND = 4 * 1000;        // In bytes.
 const float PACING_FACTOR = 0.95;     // Factor of BW to pace (for tuning).
   
 // PROBE_BW state:
@@ -59,8 +59,9 @@ const float DRAIN_FACTOR = 0.25;      // Decrease when drain.
 const float STARTUP_THRESHOLD = 1.25; // Threshold to exit STARTUP.
 const float STARTUP_GAIN = 2.89;      // Roughly 2/ln(2).
 
-// To enter PROBE_RTT state:
-const float RTT_NOCHANGE_LIMIT = 10;  // In seconds.
+// PROBE_RTT state:
+const float RTT_NOCHANGE_LIMIT = 10;  // To enter (in seconds).
+const float PROBE_RTT_MIN_TIME = 0.2; // Minimun stay time (in seconds).
 
 // Structure for tracking TCP window for estimating BW.
 struct packet_struct {
