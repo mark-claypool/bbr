@@ -2,7 +2,8 @@
 
 BBR' source code and test scripts for ns-3 (version 3.27).
 
-See the [WNS3 Workshop paper](#ccl18b) for a peer-reviewed overview.
+See the [WNS3 Workshop paper (CCL18b)](#ccl18b) for a peer-reviewed
+overview.
 
 See the [Technical Report (CCL18a)](#ccl18a) for details.
 
