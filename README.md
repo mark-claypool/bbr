@@ -2,7 +2,9 @@
 
 BBR' source code and test scripts for ns-3 (version 3.27).
 
-See the [Technical Report (CCL18)](#ccl18) for details.
+See the [WNS3 Workshop paper](#ccl18b) for a peer-reviewed overview.
+
+See the [Technical Report (CCL18a)](#ccl18a) for details.
 
 -- Mark Claypool [claypool@cs.wpi.edu](claypool@cs.wpi.edu)
 
@@ -136,7 +138,7 @@ to Repository](#link).
 There are three possible pacing configurations for BBR':
 
 1) TCP_PACING. Packet pacing is done in TCP, as per the BBR' Technical
-Report [CCL18](#ccl18).  This is the default configuration.
+Report [CCL18a](#ccl18a).  This is the default configuration.
 
 2) APP_PACING. Packet pacing is NOT done in TCP.  BBR changes the
 pacing rate and still expects packets to be paced, but in this
@@ -225,7 +227,19 @@ V. Jacobson.  [BBR: Congestion-Based Congestion
 Control](https://goo.gl/PLN3fA), *Communications of the ACM*, 60(2),
 February 2017.
 
-[<a name="ccl18">CCL18</a>] M. Claypool, J.W. Chung, and F. Li.
+[<a name="ccl18a">CCL18a</a>] M. Claypool, J.W. Chung, and F. Li.
+"BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
+Congestion Control for ns-3", Technical Report WPI-CS-TR-18-01,
+Computer Science, Worcester Polytechnic Institute, January 2018.
+Online: ftp://ftp.cs.wpi.edu/pub/techreports/pdf/18-01.pdf
+
+[<a name="ccl18b">CCL18b</a>] M. Claypool, J.W. Chung, and F. Li.
+[BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
+Congestion Control for
+ns-3](http://www.cs.wpi.edu/~claypool/papers/bbr-prime/), In
+Proceedings of the Workshop on ns-3 (WNS3), Mangalore, India,
+June 2018. 
+
 "BBR' - An Implementation of Bottleneck Bandwidth and Round-trip Time
 Congestion Control for ns-3", Technical Report WPI-CS-TR-18-01,
 Computer Science, Worcester Polytechnic Institute, January 2018.
